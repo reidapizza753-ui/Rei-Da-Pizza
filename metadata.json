@@ -1,0 +1,6 @@
+{
+  "name": "Cardápio Digital Pizzaria",
+  "description": "Cardápio digital moderno e responsivo para pizzarias artesanais com carrinho, bordas recheadas, adicionais, fechamento via WhatsApp e painel administrativo simples.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
