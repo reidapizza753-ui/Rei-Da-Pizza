@@ -10,7 +10,8 @@ import {
   deleteCategory as dbDeleteCategory,
   saveProduct as dbSaveProduct,
   deleteProduct as dbDeleteProduct,
-  saveAllCategories
+  saveAllCategories,
+  SUPABASE_SQL_SETUP
 } from "./db/db";
 import { Company, Configs, Category, Product, CartItem } from "./types";
 import { DEFAULT_COMPANY, DEFAULT_CONFIGS } from "./db/initialData";
@@ -36,6 +37,7 @@ export default function App() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  const [dbError, setDbError] = useState<string | null>(null);
 
   // Customer experience states
   const [selectedCategoryId, setSelectedCategoryId] = useState("");
@@ -77,6 +79,7 @@ export default function App() {
   const loadDatabase = async () => {
     try {
       setIsLoading(true);
+      setDbError(null);
 
       const [dbCompany, dbConfigs, dbCategories, dbProducts] = await Promise.all([
         getCompany(),
@@ -100,6 +103,7 @@ export default function App() {
       }
     } catch (e) {
       console.error("Critical error loading digital menu database:", e);
+      setDbError(e instanceof Error ? e.message : String(e));
     } finally {
       setIsLoading(false);
     }
@@ -309,6 +313,79 @@ export default function App() {
         </div>
         <h4 className="font-serif font-bold text-lg text-white">Carregando Forno...</h4>
         <p className="text-xs text-gray-500 mt-1 max-w-[200px]">Aguarde enquanto preparamos os melhores pratos artesanais da região.</p>
+      </div>
+    );
+  }
+
+  // --- DATABASE SETUP OR MISSING TABLES DIAGNOSTIC VIEW ---
+  if (dbError) {
+    return (
+      <div className="min-h-screen bg-[#0F0F0F] text-white flex flex-col items-center justify-center p-6 md:p-12 font-sans selection:bg-[#D4AF37] selection:text-black">
+        <div className="bg-[#16161C] border border-[#8B0000]/30 max-w-2xl w-full rounded-3xl p-6 md:p-8 space-y-6 shadow-2xl relative overflow-hidden">
+          <div className="absolute top-0 left-0 right-0 h-1 bg-gradient-to-r from-red-600 via-amber-500 to-red-650" />
+          
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-red-500/10 border border-red-500/20 text-red-500 rounded-2xl flex-shrink-0">
+              <ShieldAlert className="w-8 h-8" />
+            </div>
+            <div className="space-y-1">
+              <h2 className="font-serif font-black text-2xl text-white">Supabase: Tabelas Não Encontradas</h2>
+              <p className="text-sm text-gray-400">
+                O site está conectado ao Supabase corretamento, mas uma ou mais tabelas essenciais ainda não foram criadas.
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-[#0F0F0F] border border-gray-800 p-4 rounded-2xl text-xs text-red-400 font-mono overflow-x-auto whitespace-pre-wrap">
+            {dbError}
+          </div>
+
+          <div className="space-y-3">
+            <h3 className="font-serif font-bold text-base text-white">Como resolver em 30 segundos:</h3>
+            <ol className="list-decimal list-inside text-xs text-gray-300 space-y-2">
+              <li>Acesse o painel do seu <a href="https://supabase.com" target="_blank" rel="noopener noreferrer" className="text-[#D4AF37] hover:underline font-bold">Supabase</a></li>
+              <li>Entre no menu <span className="font-bold text-white">SQL Editor</span> (ícone de terminal na barra lateral esquerda)</li>
+              <li>Clique em <span className="font-bold text-white">New Query</span> (Nova Consulta) no topo</li>
+              <li>Copie o script SQL completo abaixo, cole lá e clique no botão <span className="font-bold text-white">Run</span> (Executar)</li>
+              <li>Após a execução bem sucedida, clique no botão <span className="font-bold text-[#D4AF37]">Verificar Conexão</span> abaixo para sincronizar.</li>
+            </ol>
+          </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono text-[#D4AF37]">SCRIPT SQL DE CONFIGURAÇÃO</span>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(SUPABASE_SQL_SETUP);
+                  alert("Script SQL copiado com sucesso!");
+                }}
+                className="text-xs bg-amber-500/10 hover:bg-[#D4AF37] hover:text-black hover:border-transparent border border-amber-500/20 text-[#D4AF37] px-3 py-1.5 rounded-xl transition-all font-semibold"
+              >
+                Copiar SQL completo
+              </button>
+            </div>
+            <textarea
+              readOnly
+              value={SUPABASE_SQL_SETUP}
+              className="w-full h-40 bg-[#0F0F0F] border border-gray-800 rounded-2xl p-3 font-mono text-xs text-gray-400 focus:outline-none resize-none"
+            />
+          </div>
+
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-4 pt-4 border-t border-gray-800/60">
+            <p className="text-[10px] text-gray-500">
+              Se desejar reverter temporariamente para dados locais, remova as credenciais de Supabase no arquivo .env.
+            </p>
+            <button
+              onClick={() => {
+                setDbError(null);
+                loadDatabase();
+              }}
+              className="w-full sm:w-auto px-6 py-2.5 bg-[#8B0000] hover:bg-rose-700 text-white rounded-xl text-xs font-bold transition-all text-center"
+            >
+              Verificar Conexão
+            </button>
+          </div>
+        </div>
       </div>
     );
   }

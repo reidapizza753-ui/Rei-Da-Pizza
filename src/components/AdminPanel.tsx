@@ -104,7 +104,10 @@ export default function AdminPanel({
       await onSaveCompany(inputCompany);
       await onSaveConfigs(inputConfigs);
       triggerToast("Configurações gerais salvas com sucesso!");
-    } catch (err) {
+    } catch (err: any) {
+      console.error("Erro ao salvar configurações:", err);
+      const errMsg = err?.message || String(err);
+      alert(`Erro ao salvar no Supabase!\n\nDetalhes: ${errMsg}\n\nPor favor, execute o script SQL de configuração (disponível na aba "Supabase") para criar as tabelas necessárias.`);
       triggerToast("Erro ao tentar salvar configurações.");
     }
   };
@@ -112,22 +115,32 @@ export default function AdminPanel({
   // Category Actions
   const handleCreateCategory = async () => {
     if (!newCatName.trim()) return;
-    const orderNum = categories.length > 0 ? Math.max(...categories.map((c) => c.order)) + 1 : 1;
-    const newCat: Category = {
-      id: `cat-${Date.now()}`,
-      name: newCatName.trim(),
-      active: true,
-      order: orderNum,
-    };
-    await onSaveCategory(newCat);
-    setNewCatName("");
-    triggerToast("Categoria criada!");
+    try {
+      const orderNum = categories.length > 0 ? Math.max(...categories.map((c) => c.order)) + 1 : 1;
+      const newCat: Category = {
+        id: `cat-${Date.now()}`,
+        name: newCatName.trim(),
+        active: true,
+        order: orderNum,
+      };
+      await onSaveCategory(newCat);
+      setNewCatName("");
+      triggerToast("Categoria criada!");
+    } catch (err: any) {
+      console.error("Erro ao criar categoria:", err);
+      alert(`Erro Supabase ao criar categoria: ${err.message || String(err)}\n\nCertifique-se de executar o script SQL no painel do Supabase.`);
+    }
   };
 
   const handleToggleCategoryActive = async (cat: Category) => {
-    const updated = { ...cat, active: !cat.active };
-    await onSaveCategory(updated);
-    triggerToast(`Categoria ${updated.active ? "ativada" : "desativada"}!`);
+    try {
+      const updated = { ...cat, active: !cat.active };
+      await onSaveCategory(updated);
+      triggerToast(`Categoria ${updated.active ? "ativada" : "desativada"}!`);
+    } catch (err: any) {
+      console.error("Erro ao salvar categoria:", err);
+      alert(`Erro Supabase: ${err.message || String(err)}`);
+    }
   };
 
   const handleDeleteCategoryClick = async (id: string) => {
@@ -137,8 +150,13 @@ export default function AdminPanel({
       return;
     }
     if (confirm("Deseja realmente remover esta categoria?")) {
-      await onDeleteCategory(id);
-      triggerToast("Categoria removida!");
+      try {
+        await onDeleteCategory(id);
+        triggerToast("Categoria removida!");
+      } catch (err: any) {
+        console.error("Erro ao deletar categoria:", err);
+        alert(`Erro Supabase ao deletar categoria: ${err.message || String(err)}`);
+      }
     }
   };
 
@@ -154,8 +172,13 @@ export default function AdminPanel({
 
     // Recalculate strict order identifiers
     const reordered = updatedList.map((c, i) => ({ ...c, order: i + 1 }));
-    await onReorderCategories(reordered);
-    triggerToast("Ordem das categorias atualizada!");
+    try {
+      await onReorderCategories(reordered);
+      triggerToast("Ordem das categorias atualizada!");
+    } catch (err: any) {
+      console.error("Erro ao salvar reordenação:", err);
+      alert(`Erro Supabase ao ordenar categorias: ${err.message || String(err)}`);
+    }
   };
 
   // Product Actions
@@ -208,22 +231,37 @@ export default function AdminPanel({
       tipo_produto: editingProduct.tipo_produto || (editingProduct.is_pizza ? (editingProduct.category_id === "cat-doce" ? "Pizza Doce" : "Pizza Salgada") : (editingProduct.category_id === "cat-bebida" ? "Bebida" : editingProduct.category_id === "cat-sobremesa" ? "Sobremesa" : "Esfirra Doce")),
     };
 
-    await onSaveProduct(finalProduct);
-    setIsProductModalOpen(false);
-    setEditingProduct(null);
-    triggerToast("Produto salvo com sucesso!");
+    try {
+      await onSaveProduct(finalProduct);
+      setIsProductModalOpen(false);
+      setEditingProduct(null);
+      triggerToast("Produto salvo com sucesso!");
+    } catch (err: any) {
+      console.error("Erro ao salvar produto:", err);
+      alert(`Erro ao salvar produto no Supabase: ${err.message || String(err)}\n\nPor favor, certifique-se de que a tabela 'pizzaria_products' foi criada.`);
+    }
   };
 
   const handleToggleProductActive = async (prod: Product) => {
-    const updated = { ...prod, active: !prod.active };
-    await onSaveProduct(updated);
-    triggerToast(`Produto ${updated.name} ${updated.active ? "ativado" : "desativado"}!`);
+    try {
+      const updated = { ...prod, active: !prod.active };
+      await onSaveProduct(updated);
+      triggerToast(`Produto ${updated.name} ${updated.active ? "ativado" : "desativado"}!`);
+    } catch (err: any) {
+      console.error("Erro ao alterar status do produto:", err);
+      alert(`Erro Supabase: ${err.message || String(err)}`);
+    }
   };
 
   const handleDeleteProductClick = async (id: string) => {
     if (confirm("Deseja realmente remover este produto de forma definitiva?")) {
-      await onDeleteProduct(id);
-      triggerToast("Produto excluído!");
+      try {
+        await onDeleteProduct(id);
+        triggerToast("Produto excluído!");
+      } catch (err: any) {
+        console.error("Erro ao deletar produto:", err);
+        alert(`Erro Supabase ao deletar produto: ${err.message || String(err)}`);
+      }
     }
   };
 
@@ -847,12 +885,12 @@ export default function AdminPanel({
             </div>
           </div>
 
-          <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-900/60 flex items-start space-x-3.5 space-y-0.5 max-w-2xl">
+          <div className="p-4 rounded-2xl bg-amber-950/20 border border-amber-900/65 flex items-start space-x-3.5 space-y-0.5 max-w-3xl">
             <Info className="w-5 h-5 text-amber-400 flex-shrink-0" />
             <div>
               <span className="text-xs font-bold text-amber-400 block font-serif">Como ativar no seu projeto:</span>
               <p className="text-xs text-gray-300 mt-1 leading-relaxed">
-                Crie um arquivo <code className="font-mono text-gold-400 bg-black/40 px-1 py-0.5 rounded text-[11px]">.env</code> na sua raiz com as seguintes chaves ou adicione nas variáveis de ambiente na hospedagem:
+                Crie um arquivo <code className="font-mono text-gold-400 bg-black/45 px-1 py-0.5 rounded text-[11px]">.env</code> na sua raiz com as seguintes chaves ou adicione nas variáveis de ambiente na hospedagem:
               </p>
               <pre className="font-mono text-[11px] text-gray-400 bg-black/50 p-2.5 rounded-lg border border-gray-900 mt-2.5">
                 VITE_SUPABASE_URL="https://seu-projeto.supabase.co"{"\n"}
@@ -861,10 +899,90 @@ export default function AdminPanel({
             </div>
           </div>
 
-          <div className="space-y-2">
+          {/* DOCUMENTAÇÃO DE TABELAS E COLUNAS EXIGIDAS NO SUPABASE */}
+          <div className="space-y-4 pt-2">
+            <h4 className="font-serif font-black text-white text-base">Schema do Banco de Dados (Tabelas & Colunas)</h4>
+            <p className="text-xs text-gray-400">
+              Abaixo estão listadas as 4 tabelas obrigatórias do sistema com todas as respectivas colunas e tipos de dados esperados:
+            </p>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Tabela 1: pizzaria_company */}
+              <div className="bg-[#141419] border border-gray-850 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                  <span className="text-xs font-mono font-bold text-[#D4AF37]">pizzaria_company</span>
+                  <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded-full font-mono">1 linha fixa</span>
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">id</span> <span className="text-gray-500">integer (PK / 1)</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">name</span> <span className="text-gray-500">text</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">logo</span> <span className="text-gray-500">text (URL da logo)</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">banner_title</span> <span className="text-gray-500">text</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">banner_subtitle</span> <span className="text-gray-500">text</span></div>
+                </div>
+              </div>
+
+              {/* Tabela 2: pizzaria_configs */}
+              <div className="bg-[#141419] border border-gray-850 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                  <span className="text-xs font-mono font-bold text-[#D4AF37]">pizzaria_configs</span>
+                  <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded-full font-mono">1 linha fixa</span>
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">id</span> <span className="text-gray-500">integer (PK / 1)</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">whatsapp</span> <span className="text-gray-500">text (+55 800 000 3728)</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">delivery_fee</span> <span className="text-gray-500">numeric</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">working_hours_start</span> <span className="text-gray-500">text</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">working_hours_end</span> <span className="text-gray-500">text</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">closed_message</span> <span className="text-gray-500">text</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">is_force_closed</span> <span className="text-gray-500">boolean</span></div>
+                </div>
+              </div>
+
+              {/* Tabela 3: pizzaria_categories */}
+              <div className="bg-[#141419] border border-gray-850 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                  <span className="text-xs font-mono font-bold text-[#D4AF37]">pizzaria_categories</span>
+                  <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded-full font-mono">Multiplas linhas</span>
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">id</span> <span className="text-gray-500">text (PK)</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">name</span> <span className="text-gray-500">text</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">active</span> <span className="text-gray-500">boolean</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">order</span> <span className="text-gray-500">integer</span></div>
+                </div>
+              </div>
+
+              {/* Tabela 4: pizzaria_products */}
+              <div className="bg-[#141419] border border-gray-850 rounded-2xl p-4 space-y-2">
+                <div className="flex items-center justify-between border-b border-gray-800 pb-2">
+                  <span className="text-xs font-mono font-bold text-[#D4AF37]">pizzaria_products</span>
+                  <span className="text-[10px] bg-indigo-500/10 text-indigo-400 px-2 py-0.5 rounded-full font-mono">Multiplas linhas</span>
+                </div>
+                <div className="space-y-1.5 text-xs">
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">id</span> <span className="text-gray-500">text (PK)</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">name</span> <span className="text-gray-500">text</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">photo</span> <span className="text-gray-500">text (URL da imagem)</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">description</span> <span className="text-gray-500">text</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">ingredients</span> <span className="text-gray-500">text</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">price</span> <span className="text-gray-500">numeric</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">category_id</span> <span className="text-gray-500">text</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">active</span> <span className="text-gray-500">boolean</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">is_pizza</span> <span className="text-gray-500">boolean</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">borders_available</span> <span className="text-gray-500">text[]</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">additionals_available</span> <span className="text-gray-500">text[]</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">can_half_and_half</span> <span className="text-gray-500">boolean</span></div>
+                  <div className="flex justify-between text-gray-300"><span className="font-mono text-white">tipo_produto</span> <span className="text-gray-500">text</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2">
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-gray-300 uppercase tracking-widest font-mono">Estrutura SQL de Tabelas de Inicialização</span>
               <button
+                type="button"
                 onClick={() => {
                   navigator.clipboard.writeText(SUPABASE_SQL_SETUP);
                   triggerToast("SQL Copiado com sucesso!");

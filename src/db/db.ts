@@ -7,11 +7,11 @@ import {
   DEFAULT_CONFIGS
 } from "./initialData";
 
-const supabaseUrlRaw = (import.meta as any).env?.VITE_SUPABASE_URL || "";
+const supabaseUrlRaw = ((import.meta as any).env?.VITE_SUPABASE_URL as string) || "";
 // Clean trailing /rest/v1/ suffix if present to ensure standard JS SDK compatibility
 const supabaseUrl = supabaseUrlRaw.trim().replace(/\/rest\/v1\/?$/, "");
-const supabaseAnonKey = ((import.meta as any).env?.VITE_SUPABASE_ANON_KEY || "").trim();
-const supabaseBucket = ((import.meta as any).env?.VITE_SUPABASE_BUCKET || "cardapio-images").trim();
+const supabaseAnonKey = (((import.meta as any).env?.VITE_SUPABASE_ANON_KEY as string) || "").trim();
+const supabaseBucket = (((import.meta as any).env?.VITE_SUPABASE_BUCKET as string) || "cardapio-images").trim();
 
 export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
 
@@ -67,23 +67,40 @@ initializeLocalStorageIfEmpty();
 
 export async function getCompany(): Promise<Company> {
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase
+    const { data, error } = await supabase
+      .from("pizzaria_company")
+      .select("*");
+    
+    if (error) {
+      console.error("Supabase load company error:", error);
+      throw new Error(`Erro ao carregar 'pizzaria_company' do Supabase: ${error.message} (Código: ${error.code})`);
+    }
+
+    if (data && data.length > 0) {
+      const row = data[0];
+      return {
+        name: row.name,
+        logo: row.logo,
+        banner_title: row.banner_title,
+        banner_subtitle: row.banner_subtitle,
+      };
+    } else {
+      // Automatic seeding of Company info in empty database
+      const seedObj = {
+        id: 1,
+        name: DEFAULT_COMPANY.name,
+        logo: DEFAULT_COMPANY.logo,
+        banner_title: DEFAULT_COMPANY.banner_title,
+        banner_subtitle: DEFAULT_COMPANY.banner_subtitle,
+      };
+      const { error: seedError } = await supabase
         .from("pizzaria_company")
-        .select("*")
-        .single();
+        .insert(seedObj);
       
-      if (!error && data) {
-        return {
-          name: data.name,
-          logo: data.logo,
-          banner_title: data.banner_title,
-          banner_subtitle: data.banner_subtitle,
-        };
+      if (seedError) {
+        console.error("Failed to seed empty pizzaria_company table in Supabase:", seedError);
       }
-      console.warn("Supabase pizzaria_company empty or error, falling back to local storage:", error?.message);
-    } catch (e) {
-      console.error("Supabase company error:", e);
+      return DEFAULT_COMPANY;
     }
   }
 
@@ -92,29 +109,23 @@ export async function getCompany(): Promise<Company> {
 }
 
 export async function saveCompany(company: Company): Promise<void> {
-  // Always update LocalStorage
-  localStorage.setItem(KEYS.COMPANY, JSON.stringify(company));
-
   if (isSupabaseConfigured && supabase) {
-    try {
-      // Try to upsert row with id = 1
-      const { error } = await supabase
-        .from("pizzaria_company")
-        .upsert({
-          id: 1,
-          name: company.name,
-          logo: company.logo,
-          banner_title: company.banner_title,
-          banner_subtitle: company.banner_subtitle,
-        });
+    const { error } = await supabase
+      .from("pizzaria_company")
+      .upsert({
+        id: 1,
+        name: company.name,
+        logo: company.logo,
+        banner_title: company.banner_title,
+        banner_subtitle: company.banner_subtitle,
+      });
 
-      if (error) {
-        console.error("Error saving company to Supabase:", error.message);
-        throw error;
-      }
-    } catch (e) {
-      console.error("Supabase Save Company Error:", e);
+    if (error) {
+      console.error("Error saving company to Supabase:", error.message);
+      throw new Error(`Erro ao salvar dados da empresa no Supabase: ${error.message}`);
     }
+  } else {
+    localStorage.setItem(KEYS.COMPANY, JSON.stringify(company));
   }
 }
 
@@ -122,25 +133,44 @@ export async function saveCompany(company: Company): Promise<void> {
 
 export async function getConfigs(): Promise<Configs> {
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("pizzaria_configs")
-        .select("*")
-        .single();
+    const { data, error } = await supabase
+      .from("pizzaria_configs")
+      .select("*");
 
-      if (!error && data) {
-        return {
-          whatsapp: data.whatsapp,
-          delivery_fee: Number(data.delivery_fee),
-          working_hours_start: data.working_hours_start,
-          working_hours_end: data.working_hours_end,
-          closed_message: data.closed_message,
-          is_force_closed: !!data.is_force_closed,
-        };
+    if (error) {
+      console.error("Supabase load configs error:", error);
+      throw new Error(`Erro ao carregar 'pizzaria_configs' do Supabase: ${error.message} (Código: ${error.code})`);
+    }
+
+    if (data && data.length > 0) {
+      const row = data[0];
+      return {
+        whatsapp: row.whatsapp,
+        delivery_fee: Number(row.delivery_fee),
+        working_hours_start: row.working_hours_start,
+        working_hours_end: row.working_hours_end,
+        closed_message: row.closed_message,
+        is_force_closed: !!row.is_force_closed,
+      };
+    } else {
+      // Automatic seeding of Configs
+      const seedObj = {
+        id: 1,
+        whatsapp: DEFAULT_CONFIGS.whatsapp,
+        delivery_fee: DEFAULT_CONFIGS.delivery_fee,
+        working_hours_start: DEFAULT_CONFIGS.working_hours_start,
+        working_hours_end: DEFAULT_CONFIGS.working_hours_end,
+        closed_message: DEFAULT_CONFIGS.closed_message,
+        is_force_closed: DEFAULT_CONFIGS.is_force_closed,
+      };
+      const { error: seedError } = await supabase
+        .from("pizzaria_configs")
+        .insert(seedObj);
+      
+      if (seedError) {
+        console.error("Failed to seed empty pizzaria_configs table in Supabase:", seedError);
       }
-      console.warn("Supabase pizzaria_configs empty or error, falling back to local storage:", error?.message);
-    } catch (e) {
-      console.error("Supabase configs error:", e);
+      return DEFAULT_CONFIGS;
     }
   }
 
@@ -149,29 +179,25 @@ export async function getConfigs(): Promise<Configs> {
 }
 
 export async function saveConfigs(configs: Configs): Promise<void> {
-  localStorage.setItem(KEYS.CONFIGS, JSON.stringify(configs));
-
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { error } = await supabase
-        .from("pizzaria_configs")
-        .upsert({
-          id: 1,
-          whatsapp: configs.whatsapp,
-          delivery_fee: configs.delivery_fee,
-          working_hours_start: configs.working_hours_start,
-          working_hours_end: configs.working_hours_end,
-          closed_message: configs.closed_message,
-          is_force_closed: configs.is_force_closed,
-        });
+    const { error } = await supabase
+      .from("pizzaria_configs")
+      .upsert({
+        id: 1,
+        whatsapp: configs.whatsapp,
+        delivery_fee: configs.delivery_fee,
+        working_hours_start: configs.working_hours_start,
+        working_hours_end: configs.working_hours_end,
+        closed_message: configs.closed_message,
+        is_force_closed: configs.is_force_closed,
+      });
 
-      if (error) {
-        console.error("Error saving configs to Supabase:", error.message);
-        throw error;
-      }
-    } catch (e) {
-      console.error("Supabase Save Configs Error:", e);
+    if (error) {
+      console.error("Error saving configs to Supabase:", error.message);
+      throw new Error(`Erro ao salvar configurações no Supabase: ${error.message}`);
     }
+  } else {
+    localStorage.setItem(KEYS.CONFIGS, JSON.stringify(configs));
   }
 }
 
@@ -179,18 +205,28 @@ export async function saveConfigs(configs: Configs): Promise<void> {
 
 export async function getCategories(): Promise<Category[]> {
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("pizzaria_categories")
-        .select("*")
-        .order("order", { ascending: true });
+    const { data, error } = await supabase
+      .from("pizzaria_categories")
+      .select("*")
+      .order("order", { ascending: true });
 
-      if (!error && data) {
-        return data as Category[];
+    if (error) {
+      console.error("Supabase load categories error:", error);
+      throw new Error(`Erro ao carregar 'pizzaria_categories' do Supabase: ${error.message} (Código: ${error.code})`);
+    }
+
+    if (data && data.length > 0) {
+      return data as Category[];
+    } else {
+      // Automatic seeding of Categories
+      const { error: seedError } = await supabase
+        .from("pizzaria_categories")
+        .insert(DEFAULT_CATEGORIES);
+      
+      if (seedError) {
+        console.error("Failed to seed empty pizzaria_categories table in Supabase:", seedError);
       }
-      console.warn("Supabase pizzaria_categories empty or error, falling back to local storage:", error?.message);
-    } catch (e) {
-      console.error("Supabase categories error:", e);
+      return DEFAULT_CATEGORIES;
     }
   }
 
@@ -203,75 +239,67 @@ export async function getCategories(): Promise<Category[]> {
 }
 
 export async function saveCategory(category: Category): Promise<void> {
-  const localVal = localStorage.getItem(KEYS.CATEGORIES);
-  let list: Category[] = localVal ? JSON.parse(localVal) : [];
-  list = list.filter((item) => item.id !== category.id);
-  list.push(category);
-  localStorage.setItem(KEYS.CATEGORIES, JSON.stringify(list));
-
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { error } = await supabase
-        .from("pizzaria_categories")
-        .upsert({
-          id: category.id,
-          name: category.name,
-          active: category.active,
-          order: category.order,
-        });
+    const { error } = await supabase
+      .from("pizzaria_categories")
+      .upsert({
+        id: category.id,
+        name: category.name,
+        active: category.active,
+        order: category.order,
+      });
 
-      if (error) {
-        console.error("Error saving category to Supabase:", error.message);
-        throw error;
-      }
-    } catch (e) {
-      console.error("Supabase Save Category Error:", e);
+    if (error) {
+      console.error("Error saving category to Supabase:", error.message);
+      throw new Error(`Erro ao salvar categoria no Supabase: ${error.message}`);
     }
+  } else {
+    const localVal = localStorage.getItem(KEYS.CATEGORIES);
+    let list: Category[] = localVal ? JSON.parse(localVal) : [];
+    list = list.filter((item) => item.id !== category.id);
+    list.push(category);
+    localStorage.setItem(KEYS.CATEGORIES, JSON.stringify(list));
   }
 }
 
 export async function deleteCategory(id: string): Promise<void> {
-  const localVal = localStorage.getItem(KEYS.CATEGORIES);
-  if (localVal) {
-    let list: Category[] = JSON.parse(localVal);
-    list = list.filter((item) => item.id !== id);
-    localStorage.setItem(KEYS.CATEGORIES, JSON.stringify(list));
-  }
-
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { error } = await supabase
-        .from("pizzaria_categories")
-        .delete()
-        .eq("id", id);
+    const { error } = await supabase
+      .from("pizzaria_categories")
+      .delete()
+      .eq("id", id);
 
-      if (error) {
-        console.error("Error deleting category from Supabase:", error.message);
-        throw error;
-      }
-    } catch (e) {
-      console.error("Supabase Delete Category Error:", e);
+    if (error) {
+      console.error("Error deleting category from Supabase:", error.message);
+      throw new Error(`Erro ao deletar categoria no Supabase: ${error.message}`);
+    }
+  } else {
+    const localVal = localStorage.getItem(KEYS.CATEGORIES);
+    if (localVal) {
+      let list: Category[] = JSON.parse(localVal);
+      list = list.filter((item) => item.id !== id);
+      localStorage.setItem(KEYS.CATEGORIES, JSON.stringify(list));
     }
   }
 }
 
 export async function saveAllCategories(categories: Category[]): Promise<void> {
-  localStorage.setItem(KEYS.CATEGORIES, JSON.stringify(categories));
-
   if (isSupabaseConfigured && supabase) {
-    try {
-      // Slower, but simple bulk rewrite for order sorting
-      for (const cat of categories) {
-        await supabase.from("pizzaria_categories").upsert({
-          id: cat.id,
-          name: cat.name,
-          active: cat.active,
-          order: cat.order,
-        });
+    // Slower, but simple bulk rewrite for order sorting
+    for (const cat of categories) {
+      const { error } = await supabase.from("pizzaria_categories").upsert({
+        id: cat.id,
+        name: cat.name,
+        active: cat.active,
+        order: cat.order,
+      });
+      if (error) {
+        console.error("Supabase saveAllCategories error:", error);
+        throw new Error(`Erro ao salvar ordem de categoria no Supabase: ${error.message}`);
       }
-    } catch (e) {
-      console.error("Supabase saveAllCategories error:", e);
     }
+  } else {
+    localStorage.setItem(KEYS.CATEGORIES, JSON.stringify(categories));
   }
 }
 
@@ -279,31 +307,57 @@ export async function saveAllCategories(categories: Category[]): Promise<void> {
 
 export async function getProducts(): Promise<Product[]> {
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { data, error } = await supabase
-        .from("pizzaria_products")
-        .select("*");
+    const { data, error } = await supabase
+      .from("pizzaria_products")
+      .select("*");
 
-      if (!error && data) {
-        return data.map((item) => ({
-          id: item.id,
-          name: item.name,
-          photo: item.photo,
-          description: item.description,
-          ingredients: item.ingredients,
-          price: Number(item.price),
-          category_id: item.category_id,
-          active: !!item.active,
-          is_pizza: !!item.is_pizza,
-          borders_available: item.borders_available || [],
-          additionals_available: item.additionals_available || [],
-          can_half_and_half: item.can_half_and_half !== undefined ? !!item.can_half_and_half : !!item.is_pizza,
-          tipo_produto: item.tipo_produto || (!!item.is_pizza ? (item.category_id === "cat-doce" ? "Pizza Doce" : "Pizza Salgada") : (item.category_id === "cat-bebida" ? "Bebida" : item.category_id === "cat-sobremesa" ? "Sobremesa" : "Esfirra Doce")),
-        })) as Product[];
+    if (error) {
+      console.error("Supabase load products error:", error);
+      throw new Error(`Erro ao carregar 'pizzaria_products' do Supabase: ${error.message} (Código: ${error.code})`);
+    }
+
+    if (data && data.length > 0) {
+      return data.map((item) => ({
+        id: item.id,
+        name: item.name,
+        photo: item.photo,
+        description: item.description,
+        ingredients: item.ingredients,
+        price: Number(item.price),
+        category_id: item.category_id,
+        active: !!item.active,
+        is_pizza: !!item.is_pizza,
+        borders_available: item.borders_available || [],
+        additionals_available: item.additionals_available || [],
+        can_half_and_half: item.can_half_and_half !== undefined ? !!item.can_half_and_half : !!item.is_pizza,
+        tipo_produto: item.tipo_produto || (!!item.is_pizza ? (item.category_id === "cat-doce" ? "Pizza Doce" : "Pizza Salgada") : (item.category_id === "cat-bebida" ? "Bebida" : item.category_id === "cat-sobremesa" ? "Sobremesa" : "Esfirra Doce")),
+      })) as Product[];
+    } else {
+      // Automatic seeding of Products
+      const seedArray = DEFAULT_PRODUCTS.map((p) => ({
+        id: p.id,
+        name: p.name,
+        photo: p.photo,
+        description: p.description,
+        ingredients: p.ingredients,
+        price: p.price,
+        category_id: p.category_id,
+        active: p.active,
+        is_pizza: p.is_pizza,
+        borders_available: p.borders_available,
+        additionals_available: p.additionals_available,
+        can_half_and_half: p.can_half_and_half ?? p.is_pizza,
+        tipo_produto: p.tipo_produto ?? (p.is_pizza ? (p.category_id === "cat-doce" ? "Pizza Doce" : "Pizza Salgada") : "Outro"),
+      }));
+
+      const { error: seedError } = await supabase
+        .from("pizzaria_products")
+        .insert(seedArray);
+      
+      if (seedError) {
+        console.error("Failed to seed empty pizzaria_products table in Supabase:", seedError);
       }
-      console.warn("Supabase pizzaria_products empty or error, falling back to local storage:", error?.message);
-    } catch (e) {
-      console.error("Supabase products error:", e);
+      return DEFAULT_PRODUCTS;
     }
   }
 
@@ -312,63 +366,55 @@ export async function getProducts(): Promise<Product[]> {
 }
 
 export async function saveProduct(product: Product): Promise<void> {
-  const localVal = localStorage.getItem(KEYS.PRODUCTS);
-  let list: Product[] = localVal ? JSON.parse(localVal) : [];
-  list = list.filter((item) => item.id !== product.id);
-  list.push(product);
-  localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(list));
-
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { error } = await supabase
-        .from("pizzaria_products")
-        .upsert({
-          id: product.id,
-          name: product.name,
-          photo: product.photo,
-          description: product.description,
-          ingredients: product.ingredients,
-          price: product.price,
-          category_id: product.category_id,
-          active: product.active,
-          is_pizza: product.is_pizza,
-          borders_available: product.borders_available,
-          additionals_available: product.additionals_available,
-          can_half_and_half: product.can_half_and_half,
-          tipo_produto: product.tipo_produto,
-        });
+    const { error } = await supabase
+      .from("pizzaria_products")
+      .upsert({
+        id: product.id,
+        name: product.name,
+        photo: product.photo,
+        description: product.description,
+        ingredients: product.ingredients,
+        price: product.price,
+        category_id: product.category_id,
+        active: product.active,
+        is_pizza: product.is_pizza,
+        borders_available: product.borders_available,
+        additionals_available: product.additionals_available,
+        can_half_and_half: product.can_half_and_half,
+        tipo_produto: product.tipo_produto,
+      });
 
-      if (error) {
-        console.error("Error saving product to Supabase:", error.message);
-        throw error;
-      }
-    } catch (e) {
-      console.error("Supabase Save Product Error:", e);
+    if (error) {
+      console.error("Error saving product to Supabase:", error.message);
+      throw new Error(`Erro ao salvar produto no Supabase: ${error.message}`);
     }
+  } else {
+    const localVal = localStorage.getItem(KEYS.PRODUCTS);
+    let list: Product[] = localVal ? JSON.parse(localVal) : [];
+    list = list.filter((item) => item.id !== product.id);
+    list.push(product);
+    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(list));
   }
 }
 
 export async function deleteProduct(id: string): Promise<void> {
-  const localVal = localStorage.getItem(KEYS.PRODUCTS);
-  if (localVal) {
-    let list: Product[] = JSON.parse(localVal);
-    list = list.filter((item) => item.id !== id);
-    localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(list));
-  }
-
   if (isSupabaseConfigured && supabase) {
-    try {
-      const { error } = await supabase
-        .from("pizzaria_products")
-        .delete()
-        .eq("id", id);
+    const { error } = await supabase
+      .from("pizzaria_products")
+      .delete()
+      .eq("id", id);
 
-      if (error) {
-        console.error("Error deleting product from Supabase:", error.message);
-        throw error;
-      }
-    } catch (e) {
-      console.error("Supabase Delete Product Error:", e);
+    if (error) {
+      console.error("Error deleting product from Supabase:", error.message);
+      throw new Error(`Erro ao deletar produto no Supabase: ${error.message}`);
+    }
+  } else {
+    const localVal = localStorage.getItem(KEYS.PRODUCTS);
+    if (localVal) {
+      let list: Product[] = JSON.parse(localVal);
+      list = list.filter((item) => item.id !== id);
+      localStorage.setItem(KEYS.PRODUCTS, JSON.stringify(list));
     }
   }
 }
@@ -377,7 +423,7 @@ export async function deleteProduct(id: string): Promise<void> {
 export const SUPABASE_SQL_SETUP = `-- EXECUTAR ESTES COMANDOS NO CONSOLE DO SUPABASE (SQL EDITOR)
 
 -- 1. Tabela de Empresa
-CREATE TABLE IF NOT EXISTS pizzaria_company (
+CREATE TABLE IF NOT EXISTS public.pizzaria_company (
   id integer PRIMARY KEY DEFAULT 1,
   name text NOT NULL,
   logo text NOT NULL,
@@ -387,7 +433,7 @@ CREATE TABLE IF NOT EXISTS pizzaria_company (
 );
 
 -- 2. Tabela de Configurações
-CREATE TABLE IF NOT EXISTS pizzaria_configs (
+CREATE TABLE IF NOT EXISTS public.pizzaria_configs (
   id integer PRIMARY KEY DEFAULT 1,
   whatsapp text NOT NULL,
   delivery_fee numeric NOT NULL DEFAULT 0.0,
@@ -399,7 +445,7 @@ CREATE TABLE IF NOT EXISTS pizzaria_configs (
 );
 
 -- 3. Tabela de Categorias
-CREATE TABLE IF NOT EXISTS pizzaria_categories (
+CREATE TABLE IF NOT EXISTS public.pizzaria_categories (
   id text PRIMARY KEY,
   name text NOT NULL,
   active boolean NOT NULL DEFAULT true,
@@ -407,7 +453,7 @@ CREATE TABLE IF NOT EXISTS pizzaria_categories (
 );
 
 -- 4. Tabela de Produtos
-CREATE TABLE IF NOT EXISTS pizzaria_products (
+CREATE TABLE IF NOT EXISTS public.pizzaria_products (
   id text PRIMARY KEY,
   name text NOT NULL,
   photo text NOT NULL,
@@ -418,25 +464,37 @@ CREATE TABLE IF NOT EXISTS pizzaria_products (
   active boolean NOT NULL DEFAULT true,
   is_pizza boolean NOT NULL DEFAULT true,
   borders_available text[] NOT NULL DEFAULT '{}',
-  additionals_available text[] NOT NULL DEFAULT '{}'
+  additionals_available text[] NOT NULL DEFAULT '{}',
+  can_half_and_half boolean NOT NULL DEFAULT true,
+  tipo_produto text
 );
 
 -- Habilitar leitura pública para todos
-ALTER TABLE pizzaria_company ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pizzaria_configs ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pizzaria_categories ENABLE ROW LEVEL SECURITY;
-ALTER TABLE pizzaria_products ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pizzaria_company ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pizzaria_configs ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pizzaria_categories ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.pizzaria_products ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Leitura pública pizzaria_company" ON pizzaria_company FOR SELECT USING (true);
-CREATE POLICY "Leitura pública pizzaria_configs" ON pizzaria_configs FOR SELECT USING (true);
-CREATE POLICY "Leitura pública pizzaria_categories" ON pizzaria_categories FOR SELECT USING (true);
-CREATE POLICY "Leitura pública pizzaria_products" ON pizzaria_products FOR SELECT USING (true);
+-- Excluir políticas existentes se for o caso para evitar duplicações
+DROP POLICY IF EXISTS "Leitura pública pizzaria_company" ON public.pizzaria_company;
+DROP POLICY IF EXISTS "Leitura pública pizzaria_configs" ON public.pizzaria_configs;
+DROP POLICY IF EXISTS "Leitura pública pizzaria_categories" ON public.pizzaria_categories;
+DROP POLICY IF EXISTS "Leitura pública pizzaria_products" ON public.pizzaria_products;
+DROP POLICY IF EXISTS "Modificação para todos/chave anon" ON public.pizzaria_company;
+DROP POLICY IF EXISTS "Modificação para todos/chave anon" ON public.pizzaria_configs;
+DROP POLICY IF EXISTS "Modificação para todos/chave anon" ON public.pizzaria_categories;
+DROP POLICY IF EXISTS "Modificação para todos/chave anon" ON public.pizzaria_products;
 
--- Habilitar modificações para usuários autenticados ou desabilitar RLS para simplicidade caso utilize chaves secretas
-CREATE POLICY "Modificação para todos/chave anon" ON pizzaria_company FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Modificação para todos/chave anon" ON pizzaria_configs FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Modificação para todos/chave anon" ON pizzaria_categories FOR ALL USING (true) WITH CHECK (true);
-CREATE POLICY "Modificação para todos/chave anon" ON pizzaria_products FOR ALL USING (true) WITH CHECK (true);
+CREATE POLICY "Leitura pública pizzaria_company" ON public.pizzaria_company FOR SELECT USING (true);
+CREATE POLICY "Leitura pública pizzaria_configs" ON public.pizzaria_configs FOR SELECT USING (true);
+CREATE POLICY "Leitura pública pizzaria_categories" ON public.pizzaria_categories FOR SELECT USING (true);
+CREATE POLICY "Leitura pública pizzaria_products" ON public.pizzaria_products FOR SELECT USING (true);
+
+-- Habilitar modificações para todos/chave anon para simplificar integração direta do cardápio administrativo
+CREATE POLICY "Modificação para todos/chave anon" ON public.pizzaria_company FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Modificação para todos/chave anon" ON public.pizzaria_configs FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Modificação para todos/chave anon" ON public.pizzaria_categories FOR ALL TO public USING (true) WITH CHECK (true);
+CREATE POLICY "Modificação para todos/chave anon" ON public.pizzaria_products FOR ALL TO public USING (true) WITH CHECK (true);
 
 -- 5. Configurar Storage Bucket para imagens (cardapio-images)
 -- Crie um Bucket público chamado 'cardapio-images' na aba de Storage do seu Supabase ou execute:
@@ -445,11 +503,24 @@ VALUES ('cardapio-images', 'cardapio-images', true)
 ON CONFLICT (id) DO NOTHING;
 
 -- Definir políticas para o bucket 'cardapio-images' se RLS estiver ativo no Storage
-CREATE POLICY "Leitura pública para imagens" ON storage.objects
-  FOR SELECT USING (bucket_id = 'cardapio-images');
+DROP POLICY IF EXISTS "Leitura pública para imagens" ON storage.objects;
+DROP POLICY IF EXISTS "Modificação pública para imagens" ON storage.objects;
+DROP POLICY IF EXISTS "Acesso público de leitura" ON storage.objects;
+DROP POLICY IF EXISTS "Acesso público de inserção" ON storage.objects;
+DROP POLICY IF EXISTS "Acesso público de modificação" ON storage.objects;
+DROP POLICY IF EXISTS "Acesso público de exclusão" ON storage.objects;
 
-CREATE POLICY "Modificação pública para imagens" ON storage.objects
-  FOR ALL USING (bucket_id = 'cardapio-images') WITH CHECK (bucket_id = 'cardapio-images');
+CREATE POLICY "Acesso público de leitura" ON storage.objects
+  FOR SELECT TO public USING (bucket_id = 'cardapio-images');
+
+CREATE POLICY "Acesso público de inserção" ON storage.objects
+  FOR INSERT TO public WITH CHECK (bucket_id = 'cardapio-images');
+
+CREATE POLICY "Acesso público de modificação" ON storage.objects
+  FOR UPDATE TO public USING (bucket_id = 'cardapio-images') WITH CHECK (bucket_id = 'cardapio-images');
+
+CREATE POLICY "Acesso público de exclusão" ON storage.objects
+  FOR DELETE TO public USING (bucket_id = 'cardapio-images');
 `;
 
 // --- CLIENT-SIDE IMAGE OPTIMIZATION HELPER (Canvas-based) ---
