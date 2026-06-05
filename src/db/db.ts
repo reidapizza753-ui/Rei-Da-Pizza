@@ -7,8 +7,11 @@ import {
   DEFAULT_CONFIGS
 } from "./initialData";
 
-const supabaseUrl = (import.meta as any).env?.VITE_SUPABASE_URL || "";
-const supabaseAnonKey = (import.meta as any).env?.VITE_SUPABASE_ANON_KEY || "";
+const supabaseUrlRaw = (import.meta as any).env?.VITE_SUPABASE_URL || "";
+// Clean trailing /rest/v1/ suffix if present to ensure standard JS SDK compatibility
+const supabaseUrl = supabaseUrlRaw.trim().replace(/\/rest\/v1\/?$/, "");
+const supabaseAnonKey = ((import.meta as any).env?.VITE_SUPABASE_ANON_KEY || "").trim();
+const supabaseBucket = ((import.meta as any).env?.VITE_SUPABASE_BUCKET || "cardapio-images").trim();
 
 export const isSupabaseConfigured = !!(supabaseUrl && supabaseAnonKey);
 
@@ -544,9 +547,9 @@ export async function uploadImage(file: File, folder: "logo" | "products"): Prom
       const fileName = `${Date.now()}-${Math.random().toString(36).substring(2, 15)}.${uploadExt}`;
       const filePath = `${folder}/${fileName}`;
 
-      // Upload file directly to Supabase Storage in "cardapio-images" bucket
+      // Upload file directly to Supabase Storage in configured bucket
       const { data, error } = await supabase.storage
-        .from("cardapio-images")
+        .from(supabaseBucket)
         .upload(filePath, optimizedBlob, {
           cacheControl: "31536000", // Cache heavily (1 year) since it's optimized
           upsert: true,
@@ -560,7 +563,7 @@ export async function uploadImage(file: File, folder: "logo" | "products"): Prom
 
       // Get public URL of the uploaded image
       const { data: { publicUrl } } = supabase.storage
-        .from("cardapio-images")
+        .from(supabaseBucket)
         .getPublicUrl(filePath);
 
       return publicUrl;
