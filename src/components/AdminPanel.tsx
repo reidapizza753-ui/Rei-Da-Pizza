@@ -81,11 +81,11 @@ export default function AdminPanel({
   // Handle Login
   const handleLoginSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (passwordInput === "admin123" || passwordInput === "pizzaria123") {
+    if (passwordInput === "117711" || passwordInput === "admin123" || passwordInput === "pizzaria123") {
       setIsAuthenticated(true);
       setLoginError("");
     } else {
-      setLoginError("Senha incorreta. Dica: use 'pizzaria123'");
+      setLoginError("Senha incorreta. Colega, use '117711'");
     }
   };
 
