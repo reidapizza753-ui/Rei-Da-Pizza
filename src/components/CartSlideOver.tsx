@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { X, Trash2, Plus, Minus, Send, ShoppingBag, ShieldAlert, AlertTriangle } from "lucide-react";
-import { CartItem, CustomerDetails, PaymentMethod, Configs, Product } from "../types";
+import { CartItem, CustomerDetails, PaymentMethod, Configs, Product, Order } from "../types";
 import { trackLeadEvent } from "../lib/pixel";
+import { trackAddPaymentInfo, trackLead, trackCompleteRegistration } from "../utils/metaPixel";
 import OptimizedImage from "./OptimizedImage";
 
 interface CartSlideOverProps {
@@ -83,6 +84,22 @@ export default function CartSlideOver({
       }
     }
   }, []);
+
+  // Track reaching step 4 (payment/summary) in Checkout
+  useEffect(() => {
+    if (isOpen && currentStep === 4 && cartItems.length > 0) {
+      // Calculate total corresponding to standard delivery rules
+      const sub = cartItems.reduce((acc, item) => {
+        const base = item.appliedPrice !== undefined ? item.appliedPrice : (item.is_half_and_half && item.half_flavor_1 && item.half_flavor_2 ? Math.max(item.half_flavor_1.price, item.half_flavor_2.price) : item.product.price);
+        const border = item.selected_border ? item.selected_border.price : 0;
+        const additionals = (item.selected_additionals || []).reduce((sum, add) => sum + add.price, 0);
+        return acc + (base + border + additionals) * item.quantity;
+      }, 0);
+      const pizzaCount = cartItems.reduce((sum, item) => item.product.is_pizza ? sum + item.quantity : sum, 0);
+      const fee = pizzaCount >= 2 ? 0 : configs.delivery_fee;
+      trackAddPaymentInfo({ total: sub + fee });
+    }
+  }, [isOpen, currentStep, cartItems.length]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target;
@@ -246,6 +263,7 @@ export default function CartSlideOver({
   const handleAdvanceToStep4 = () => {
     if (validateCustomerStep()) {
       setCurrentStep(4);
+      trackCompleteRegistration();
     }
   };
 
@@ -357,6 +375,21 @@ ${allObs || "Sem observações gerais."}`;
       paymentMethod: "PIX",
       itemsCount: cartItems.reduce((acc, i) => acc + i.quantity, 0)
     });
+
+    const currentOrder: Order = {
+      customer: customer,
+      items: cartItems,
+      subtotal: subtotal,
+      delivery_fee: deliveryFee,
+      total: total,
+      payment_method: "PIX",
+    };
+
+    // Save final order structure into localStorage for Purchase tracking on /redirecionando
+    localStorage.setItem("last_placed_order", JSON.stringify(currentOrder));
+
+    // Fire the Meta Pixel Lead tracker
+    trackLead(currentOrder);
 
     // Cleaning WhatsApp Target phone digits from configs
     let cleanedPhone = configs.whatsapp.replace(/\D/g, "");

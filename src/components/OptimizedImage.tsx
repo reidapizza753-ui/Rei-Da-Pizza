@@ -47,12 +47,23 @@ export default function OptimizedImage({
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<boolean>(false);
 
-  // Initialize and validate src
+  // Initialize and validate src, and run high-speed cache check to bypass skeleton if ready
   useEffect(() => {
-    if (!src || src.trim() === "") {
-      setImageSrc(getDefaultPhoto(categoryId, isPizza));
-    } else {
-      setImageSrc(src);
+    const targetSrc = (!src || src.trim() === "") ? getDefaultPhoto(categoryId, isPizza) : src;
+    setImageSrc(targetSrc);
+
+    if (typeof window !== "undefined") {
+      const checkImg = new Image();
+      checkImg.onload = () => {
+        setLoading(false);
+      };
+      checkImg.onerror = () => {
+        setLoading(false);
+      };
+      checkImg.src = targetSrc;
+      if (checkImg.complete) {
+        setLoading(false);
+      }
     }
   }, [src, categoryId, isPizza]);
 
@@ -79,11 +90,11 @@ export default function OptimizedImage({
       <img
         src={imageSrc}
         alt={alt}
-        loading="lazy"
+        loading="eager"
         referrerPolicy="no-referrer"
         onLoad={handleLoad}
         onError={handleError}
-        className={`w-full h-full object-cover transition-opacity duration-500 ease-out ${
+        className={`w-full h-full object-cover transition-opacity duration-250 ease-out ${
           loading ? "opacity-0" : "opacity-100"
         }`}
         {...props}

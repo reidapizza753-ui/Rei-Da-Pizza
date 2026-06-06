@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { Send, AlertCircle, RefreshCw, ShoppingBag } from "lucide-react";
+import { trackPurchase } from "../utils/metaPixel";
 
 export default function RedirectScreen() {
   const [phone, setPhone] = useState<string>("");
@@ -17,6 +18,23 @@ export default function RedirectScreen() {
       setErrorMsg("Nenhum pedido recente encontrado para redirecionar. Volte ao cardápio e envie o seu pedido.");
       setLoading(false);
       return;
+    }
+
+    // Load full order details and trigger Meta Pixel Purchase event correctly
+    const lastPlacedOrderStr = localStorage.getItem("last_placed_order");
+    if (lastPlacedOrderStr) {
+      try {
+        const lastPlacedOrder = JSON.parse(lastPlacedOrderStr);
+        if (lastPlacedOrder && lastPlacedOrder.items && lastPlacedOrder.items.length > 0) {
+          trackPurchase(lastPlacedOrder);
+        } else {
+          console.warn("[Meta Pixel] Ignored Purchase tracking because order has no items.");
+        }
+      } catch (err) {
+        console.error("[Meta Pixel] Failed to parse cached order during Purchase tracking:", err);
+      }
+    } else {
+      console.warn("[Meta Pixel] No active order found in storage. Manual redirection denied.");
     }
 
     setPhone(savedPhone);

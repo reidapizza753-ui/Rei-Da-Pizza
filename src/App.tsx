@@ -25,6 +25,14 @@ import CartSlideOver from "./components/CartSlideOver";
 import AdminPanel from "./components/AdminPanel";
 import RedirectScreen from "./components/RedirectScreen";
 import { Pizza, ShieldAlert, Sparkles, Flame, Utensils, BadgePercent, ShoppingBag } from "lucide-react";
+import {
+  initMetaPixel,
+  trackPageView,
+  trackViewContent,
+  trackAddToCart,
+  trackRemoveFromCart,
+  trackInitiateCheckout
+} from "./utils/metaPixel";
 
 export default function App() {
   // Navigation states (/admin router check)
@@ -97,6 +105,53 @@ export default function App() {
       window.removeEventListener("hashchange", handleUrlCheck);
     };
   }, []);
+
+  // 1. Initialize Meta Pixel base on layout mount
+  useEffect(() => {
+    initMetaPixel();
+  }, []);
+
+  // 2. Track Route PageViews on router navigation (Home, Cardápio, Carrinho, Checkout, /redirecionando)
+  useEffect(() => {
+    if (isAdminView) {
+      return; // Do not fire pixel in admin
+    }
+
+    if (isRedirectingView) {
+      trackPageView("/redirecionando");
+      return;
+    }
+
+    if (isCartOpen) {
+      if (currentStep === 1) {
+        trackPageView("Carrinho");
+      } else {
+        trackPageView("Checkout");
+      }
+    } else {
+      // If category selected and menu is being browsed, track as Cardápio. Else track as Home.
+      if (selectedCategoryId !== "") {
+        trackPageView("Cardápio");
+      } else {
+        trackPageView("Home");
+      }
+    }
+  }, [isAdminView, isRedirectingView, isCartOpen, currentStep, selectedCategoryId]);
+
+  // 3. Track product details viewed (ViewContent)
+  useEffect(() => {
+    if (activeProductForModal) {
+      const cat = categories.find((c) => c.id === activeProductForModal.category_id);
+      trackViewContent(activeProductForModal, cat?.name);
+    }
+  }, [activeProductForModal, categories]);
+
+  // 4. Track InitiateCheckout whenever customer views their cart drawer
+  useEffect(() => {
+    if (isCartOpen && cartItems.length > 0 && currentStep === 1) {
+      trackInitiateCheckout(cartItems);
+    }
+  }, [isCartOpen, cartItems.length, currentStep]);
 
   // History API popstate & pushState synchronization for catalog, cart and checkout screen transitions
   useEffect(() => {
@@ -184,6 +239,18 @@ export default function App() {
       setConfigs(dbConfigs);
       setCategories(dbCategories);
       setProducts(dbProducts);
+
+      // Background preloading of all product images in parallel for blazing-fast navigation
+      if (dbProducts && dbProducts.length > 0) {
+        setTimeout(() => {
+          dbProducts.forEach((product) => {
+            if (product.photo && product.photo.trim() !== "") {
+              const img = new Image();
+              img.src = product.photo;
+            }
+          });
+        }, 50);
+      }
 
       // Load featured promos from storage
       const savedFeatured = localStorage.getItem("pizzaria_featured_v1");
@@ -369,6 +436,11 @@ export default function App() {
     const compId = generateCartCombinationKey(newItem);
     const existingIdx = cartItems.findIndex((x) => generateCartCombinationKey(x) === compId);
 
+    const trackedItem: CartItem = {
+      ...newItem,
+      id: `cart-${compId}-${Date.now()}`,
+    };
+
     if (existingIdx > -1) {
       // Coalesce same customizations by sum quantity
       const updated = [...cartItems];
@@ -376,16 +448,16 @@ export default function App() {
       saveCartToStorage(updated);
     } else {
       // Join as discrete cart entry
-      const itemWithId: CartItem = {
-        ...newItem,
-        id: `cart-${compId}-${Date.now()}`,
-      };
-      saveCartToStorage([...cartItems, itemWithId]);
+      saveCartToStorage([...cartItems, trackedItem]);
     }
 
     if (newItem.is_half_and_half) {
       setHalfPizzaInProgress(null);
     }
+
+    // Trigger Meta Pixel AddToCart track
+    const cat = categories.find((c) => c.id === newItem.product.category_id);
+    trackAddToCart(trackedItem, cat?.name);
 
     // Gentle notification bar at bottom of menu screen
     const pName = newItem.product.name;
@@ -406,6 +478,11 @@ export default function App() {
   };
 
   const handleRemoveCartItem = (id: string) => {
+    const itemToRemove = cartItems.find((i) => i.id === id);
+    if (itemToRemove) {
+      const cat = categories.find((c) => c.id === itemToRemove.product.category_id);
+      trackRemoveFromCart(itemToRemove, cat?.name);
+    }
     const updated = cartItems.filter((i) => i.id !== id);
     saveCartToStorage(updated);
   };
