@@ -10,6 +10,7 @@ interface ProductModalProps {
   onAddToCart: (cartItem: Omit<CartItem, "id">) => void;
   halfPizzaInProgress: Product | null;
   onSelectFirstHalf: (product: Product) => void;
+  appliedPromoPrice?: number;
 }
 
 export default function ProductModal({
@@ -18,6 +19,7 @@ export default function ProductModal({
   onAddToCart,
   halfPizzaInProgress,
   onSelectFirstHalf,
+  appliedPromoPrice,
 }: ProductModalProps) {
   if (!product) return null;
 
@@ -74,6 +76,9 @@ export default function ProductModal({
   const getBasePrice = () => {
     if (modalMode === "meio_second_confirm" && halfPizzaInProgress) {
       return Math.max(halfPizzaInProgress.price, product.price);
+    }
+    if (appliedPromoPrice !== undefined && appliedPromoPrice > 0) {
+      return appliedPromoPrice;
     }
     return product.price;
   };
@@ -142,6 +147,7 @@ export default function ProductModal({
       selected_border: product.is_pizza ? selectedBorder : undefined,
       selected_additionals: product.is_pizza ? selectedAdditionals : [],
       observation: observation.trim(),
+      appliedPrice: appliedPromoPrice !== undefined && appliedPromoPrice > 0 ? appliedPromoPrice : undefined,
     });
     onClose();
   };

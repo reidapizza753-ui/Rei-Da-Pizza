@@ -156,13 +156,16 @@ export default function CartSlideOver({
   };
 
   const subtotal = cartItems.reduce((acc, item) => {
-    const base = calculateItemBasePrice(item);
+    const base = item.appliedPrice !== undefined ? item.appliedPrice : calculateItemBasePrice(item);
     const border = item.selected_border ? item.selected_border.price : 0;
     const additionals = (item.selected_additionals || []).reduce((sum, add) => sum + add.price, 0);
     return acc + (base + border + additionals) * item.quantity;
   }, 0);
 
-  const deliveryFee = configs.delivery_fee;
+  // Buy any 2 pizzas, get free delivery and a 2-liter Arctic Guaraná
+  const pizzaQty = cartItems.reduce((sum, item) => item.product.is_pizza ? sum + item.quantity : sum, 0);
+  const isEligibleForFreeDelivery = pizzaQty >= 2;
+  const deliveryFee = isEligibleForFreeDelivery ? 0 : configs.delivery_fee;
   const total = subtotal + deliveryFee;
 
   const formatCurrency = (val: number) => {
@@ -282,7 +285,8 @@ export default function CartSlideOver({
         line += ` (${extras.join(" | ")})`;
       }
 
-      const unitCost = calculateItemBasePrice(item) + 
+      const basePrice = item.appliedPrice !== undefined ? item.appliedPrice : calculateItemBasePrice(item);
+      const unitCost = basePrice + 
         (item.selected_border ? item.selected_border.price : 0) + 
         (item.selected_additionals || []).reduce((s, a) => s + a.price, 0);
 
@@ -301,8 +305,15 @@ export default function CartSlideOver({
       .filter(Boolean)
       .join("; ");
 
+    const pizzaQtyForPromo = cartItems.reduce((sum, item) => item.product.is_pizza ? sum + item.quantity : sum, 0);
+    const hasFreeGift = pizzaQtyForPromo >= 2;
+    const finalItemsList = hasFreeGift 
+      ? `${itemsLines}\n🎁 *BRINDE GRÁTIS: 1x Guaraná Antarctica 2L*`
+      : itemsLines;
+
     // Setup custom styled WhatsApp message layout precisely matching prompt request
     const textMessage = `NOVO PEDIDO
+Preciso de entrega de Pizza!
 
 Cliente:
 ${customer.name.trim()}
@@ -322,13 +333,13 @@ Tempo estimado informado:
 Até 30 minutos
 
 Itens:
-${itemsLines}
+${finalItemsList}
 
 Subtotal:
 R$ ${subtotal.toFixed(2)}
 
 Taxa de entrega:
-R$ ${deliveryFee.toFixed(2)}
+${hasFreeGift ? "GRÁTIS (Cortesia Compra 2 Pizzas)" : `R$ ${deliveryFee.toFixed(2)}`}
 
 Total:
 R$ ${total.toFixed(2)}
@@ -484,6 +495,48 @@ ${allObs || "Sem observações gerais."}`;
                       Etapa 1: Editar Carrinho
                     </h4>
                   </div>
+
+                  {/* Banner de Incentivo ou Glória Promocional */}
+                  {cartItems.length > 0 && (
+                    <div className="mb-4">
+                      {isEligibleForFreeDelivery ? (
+                        <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-emerald-950/45 to-zinc-900 border border-emerald-500/35 p-3.5 flex items-start space-x-3.5 shadow-md animate-bounce" style={{ animationDuration: "3.5s" }}>
+                          <div className="absolute top-0 right-0 w-16 h-16 bg-emerald-500/10 rounded-full blur-xl pointer-events-none"></div>
+                          
+                          <div className="p-2 bg-[#105F30] border border-[#1FA055] text-gold-400 rounded-xl shrink-0 text-sm">
+                            ★
+                          </div>
+                          <div className="flex-grow space-y-1 text-left min-w-0">
+                            <h5 className="font-sans font-black text-xs text-white leading-tight">Sua Entrega e o Guaraná 2L são GRÁTIS!</h5>
+                            <p className="text-[10px] text-gray-300 leading-normal">
+                              Parabéns! Você adicionou <strong className="text-white">{pizzaQty} pizzas</strong> ao seu carrinho. Já garantimos de brinde o seu <strong className="text-green-400">Guaraná Antarctica 2L</strong> e a taxa de entrega grátis!
+                            </p>
+                          </div>
+                        </div>
+                      ) : (
+                        pizzaQty === 1 && (
+                          <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-amber-950/15 to-zinc-900 border border-[#D4AF37]/35 p-3.5 flex items-start space-x-3.5 shadow-sm">
+                            <div className="p-2 bg-[#8B0000] text-[#D4AF37] rounded-xl shrink-0 font-bold text-xs leading-none flex items-center justify-center w-7.5 h-7.5">
+                              💡
+                            </div>
+                            <div className="flex-grow space-y-1 text-left min-w-0">
+                              <h5 className="font-sans font-bold text-xs text-[#D4AF37] leading-tight flex items-center justify-between">
+                                <span>Ganhe Brinde + Taxa Grátis!</span>
+                                <span className="text-[9px] font-mono select-none px-2 py-0.5 rounded-full bg-[#D4AF37]/10 border border-[#D4AF37]/20 font-bold">Falta 1</span>
+                              </h5>
+                              <p className="text-[10px] text-gray-400 leading-normal">
+                                Adicione mais <strong className="text-white">1 pizza</strong> para ganhar inteiramente grátis um <strong className="text-green-400">Guaraná Antarctica 2L</strong> e <strong className="text-[#D4AF37]">Taxa de Entrega ZERO</strong>!
+                              </p>
+                              {/* Barra de progresso */}
+                              <div className="w-full bg-black/45 rounded-full h-1.5 mt-2 overflow-hidden border border-zinc-800">
+                                <div className="bg-gradient-to-r from-[#D4AF37] to-amber-500 h-1.5 rounded-full" style={{ width: "50%" }}></div>
+                              </div>
+                            </div>
+                          </div>
+                        )
+                      )}
+                    </div>
+                  )}
 
                   <div className="space-y-3.5">
                     {cartItems.map((item) => {
@@ -983,7 +1036,11 @@ ${allObs || "Sem observações gerais."}`;
               </div>
               <div className="flex items-center justify-between text-xs text-gray-400">
                 <span>Taxa de Entrega</span>
-                <span className="font-mono">{formatCurrency(deliveryFee)}</span>
+                {isEligibleForFreeDelivery ? (
+                  <span className="font-mono font-bold text-green-400 uppercase text-[10px] bg-green-950/40 border border-green-500/20 px-2 py-0.5 rounded-full">Grátis</span>
+                ) : (
+                  <span className="font-mono">{formatCurrency(deliveryFee)}</span>
+                )}
               </div>
               <div className="flex items-center justify-between text-sm text-white font-bold pt-1.5 border-t border-white/5">
                 <span className="font-serif">Valor Total</span>

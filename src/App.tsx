@@ -13,7 +13,7 @@ import {
   saveAllCategories,
   SUPABASE_SQL_SETUP
 } from "./db/db";
-import { Company, Configs, Category, Product, CartItem } from "./types";
+import { Company, Configs, Category, Product, CartItem, FeaturedPromo } from "./types";
 import { DEFAULT_COMPANY, DEFAULT_CONFIGS } from "./db/initialData";
 import Header from "./components/Header";
 import Banner from "./components/Banner";
@@ -47,6 +47,16 @@ export default function App() {
   const [halfPizzaInProgress, setHalfPizzaInProgress] = useState<Product | null>(null);
   const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
   const [toastText, setToastText] = useState<string | null>(null);
+
+  // Promo and featured states
+  const [featuredPromos, setFeaturedPromos] = useState<FeaturedPromo[]>([]);
+  const [selectedPromoPrice, setSelectedPromoPrice] = useState<number | undefined>(undefined);
+
+  const handleSaveFeaturedPromos = (newPromos: FeaturedPromo[]) => {
+    localStorage.setItem("pizzaria_featured_v1", JSON.stringify(newPromos));
+    setFeaturedPromos(newPromos);
+    setToastText("Promoções em destaque salvas com sucesso!");
+  };
 
   // References
   const menuSectionRef = useRef<HTMLDivElement>(null);
@@ -174,6 +184,24 @@ export default function App() {
       setConfigs(dbConfigs);
       setCategories(dbCategories);
       setProducts(dbProducts);
+
+      // Load featured promos from storage
+      const savedFeatured = localStorage.getItem("pizzaria_featured_v1");
+      if (savedFeatured) {
+        try {
+          setFeaturedPromos(JSON.parse(savedFeatured));
+        } catch (err) {
+          console.error("Error parsing saved promos:", err);
+        }
+      } else {
+        const defaultFeatured: FeaturedPromo[] = [
+          { productId: "prod-sal-mussarela", label: "Mussarela Especial", promoPrice: 29.90 },
+          { productId: "prod-sal-calabresa", label: "Tradicional Defumada", promoPrice: 29.90 },
+          { productId: "prod-sal-portuguesa", label: "Campeã de Vendas", promoPrice: 34.90 }
+        ];
+        localStorage.setItem("pizzaria_featured_v1", JSON.stringify(defaultFeatured));
+        setFeaturedPromos(defaultFeatured);
+      }
 
       // Select first active category by default
       const sortedActiveCats = [...dbCategories]
@@ -495,6 +523,8 @@ export default function App() {
           onSaveProduct={handleSaveProduct}
           onDeleteProduct={handleDeleteProduct}
           onReorderCategories={handleReorderCategories}
+          featuredPromos={featuredPromos}
+          onSaveFeaturedPromos={handleSaveFeaturedPromos}
         />
       </div>
     );
@@ -551,7 +581,7 @@ export default function App() {
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
             <div>
               <div className="inline-flex items-center space-x-2 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full text-[#D4AF37] text-xs font-mono font-bold tracking-widest uppercase mb-2">
-                <Sparkles className="w-3.5 h-3.5" />
+                <Sparkles className="w-3.5 h-3.5 animate-pulse" />
                 <span>Ofertas Imperdíveis</span>
               </div>
               <h3 className="font-serif font-black italic text-xl md:text-3xl text-white">Promoções em Destaque</h3>
@@ -559,67 +589,70 @@ export default function App() {
             {/* Badges/Tags Informacionais */}
             <div className="flex flex-wrap items-center gap-2 text-xs text-gray-400 bg-black/40 border border-gray-850 px-4 py-2.5 rounded-2xl">
               <span className="flex items-center gap-1.5 font-semibold text-white">
-                <Flame className="w-4 h-4 text-orange-500" /> Forno a Lenha
+                <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span> Forno a Lenha
               </span>
               <span className="text-gray-600">•</span>
               <span className="flex items-center gap-1.5 font-semibold text-white">
-                <Pizza className="w-4 h-4 text-amber-500" /> Pizza Inteira 8 Pedaços
+                <span className="w-2 h-2 rounded-full bg-amber-500"></span> Pizza Inteira 8 Pedaços
               </span>
               <span className="text-gray-600">•</span>
               <span className="flex items-center gap-1.5 font-semibold text-white">
-                <Utensils className="w-4 h-4 text-gold-400" /> Meio a Meio Disponível
+                <span className="w-2 h-2 rounded-full bg-gold-400"></span> Meio a Meio Disponível
               </span>
             </div>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-            {/* Promo 1 */}
-            <div className="relative group overflow-hidden bg-[#16161C] border border-gray-800 rounded-3xl p-5 flex items-center justify-between gap-4 hover:border-[#D4AF37]/50 transition-all duration-300">
-              <div className="space-y-1.5 min-w-0">
-                <span className="text-[10px] font-mono font-bold text-[#D4AF37] uppercase bg-[#D4AF37]/10 px-2 py-0.5 rounded-full inline-block">Mussarela Especial</span>
-                <h4 className="font-serif font-black text-base text-white truncate">Pizza Mussarela</h4>
-                <p className="text-xs text-gray-400 font-light truncate font-sans">Clássica e irresistível muçarela</p>
-                <div className="flex items-baseline gap-2 pt-1">
-                  <span className="text-xs text-gray-500 line-through">De R$39,90</span>
-                  <span className="text-lg font-mono font-bold text-[#D4AF37]">R$ 34,90</span>
-                </div>
-              </div>
-              <div className="w-16 h-16 rounded-2xl overflow-hidden bg-black/40 border border-gray-850 shrink-0 select-none">
-                <img src="https://images.unsplash.com/photo-1574071318508-1cdbab80d002?w=150&auto=format&fit=crop&q=80" alt="Pizza Mussarela" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-              </div>
-            </div>
-
-            {/* Promo 2 */}
-            <div className="relative group overflow-hidden bg-[#16161C] border border-gray-800 rounded-3xl p-5 flex items-center justify-between gap-4 hover:border-[#D4AF37]/50 transition-all duration-300">
-              <div className="space-y-1.5 min-w-0">
-                <span className="text-[10px] font-mono font-bold text-[#D4AF37] uppercase bg-[#D4AF37]/10 px-2 py-0.5 rounded-full inline-block">Tradicional Defumada</span>
-                <h4 className="font-serif font-black text-base text-white truncate">Pizza Calabresa</h4>
-                <p className="text-xs text-gray-400 font-light truncate font-sans">Rodelas de calabresa defumada</p>
-                <div className="flex items-baseline gap-2 pt-1">
-                  <span className="text-xs text-gray-500 line-through">De R$39,90</span>
-                  <span className="text-lg font-mono font-bold text-[#D4AF37]">R$ 34,90</span>
-                </div>
-              </div>
-              <div className="w-16 h-16 rounded-2xl overflow-hidden bg-black/40 border border-gray-850 shrink-0 select-none">
-                <img src="https://images.unsplash.com/photo-1513104890138-7c749659a591?w=150&auto=format&fit=crop&q=80" alt="Pizza Calabresa" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-              </div>
-            </div>
-
-            {/* Promo 3 */}
-            <div className="relative group overflow-hidden bg-[#16161C] border border-gray-800 rounded-3xl p-5 flex items-center justify-between gap-4 hover:border-[#D4AF37]/50 transition-all duration-300 sm:col-span-2 lg:col-span-1">
-              <div className="space-y-1.5 min-w-0">
-                <span className="text-[10px] font-mono font-bold text-emerald-400 uppercase bg-emerald-500/10 px-2 py-0.5 rounded-full inline-block">Novidade Doce</span>
-                <h4 className="font-serif font-black text-base text-white truncate">Esfirras Doces</h4>
-                <p className="text-xs text-gray-400 font-light truncate font-sans">Chocolate, Prestígio e churros</p>
-                <div className="flex items-baseline gap-2 pt-1">
-                  <span className="text-xs text-gray-500 font-sans">Massa fofinha individual</span>
-                  <span className="text-lg font-mono font-bold text-emerald-400">A partir de R$ 4,99</span>
-                </div>
-              </div>
-              <div className="w-16 h-16 rounded-2xl overflow-hidden bg-black/40 border border-gray-850 shrink-0 select-none">
-                <img src="https://images.unsplash.com/photo-1606313564200-e75d5e30476c?w=150&auto=format&fit=crop&q=80" alt="Esfirras Doces" className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
-              </div>
-            </div>
+            {featuredPromos
+              .filter((promo) => {
+                const item = products.find((p) => p.id === promo.productId);
+                return item && item.active;
+              })
+              .map((promo, idx) => {
+                const item = products.find((p) => p.id === promo.productId)!;
+                return (
+                  <div
+                    key={`${promo.productId}-${idx}`}
+                    onClick={() => {
+                      setSelectedPromoPrice(promo.promoPrice);
+                      setActiveProductForModal(item);
+                    }}
+                    className="relative cursor-pointer group overflow-hidden bg-[#16161C] border border-gray-850 hover:border-[#D4AF37]/50 rounded-3xl p-5 flex items-center justify-between gap-4 hover:shadow-xl hover:shadow-black/30 hover:scale-[1.01] active:scale-95 transition-all duration-300"
+                  >
+                    <div className="space-y-1.5 min-w-0">
+                      {promo.label && (
+                        <span className="text-[9px] font-mono font-black text-[#D4AF37] uppercase bg-[#D4AF37]/10 border border-[#D4AF37]/20 px-2.5 py-1 rounded-full inline-block tracking-widest leading-none">
+                          ★ {promo.label}
+                        </span>
+                      )}
+                      <h4 className="font-serif font-black text-base text-white truncate">{item.name}</h4>
+                      <p className="text-xs text-gray-400 font-light truncate font-sans">{item.description || "Deliciosa pizza artesanal."}</p>
+                      <div className="flex items-baseline gap-2 pt-1">
+                        {promo.promoPrice > 0 && promo.promoPrice !== item.price && (
+                          <span className="text-xs text-gray-500 line-through">De R$ {item.price.toFixed(2)}</span>
+                        )}
+                        <span className="text-lg font-mono font-bold text-[#D4AF37]">
+                          R$ {(promo.promoPrice || item.price).toFixed(2)}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="w-16 h-16 rounded-2xl overflow-hidden bg-black/40 border border-gray-850 shrink-0 select-none">
+                      {item.photo ? (
+                        <img
+                          src={item.photo}
+                          alt={item.name}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform"
+                          referrerPolicy="no-referrer"
+                        />
+                      ) : (
+                        <div className="w-full h-full bg-neutral-900 flex items-center justify-center text-[10px] text-gray-600 font-bold uppercase font-sans">
+                          Pizza
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
           </div>
         </div>
       </section>
@@ -635,6 +668,46 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {/* 5. PROMOÇÃO CARA DO GOL (Buy 2, Get Guaraná + Free Delivery) */}
+      <div className="max-w-7xl mx-auto px-4 pt-6 w-full">
+        <div className="relative overflow-hidden rounded-3xl bg-gradient-to-r from-[#5a0000] via-[#8B0000] to-neutral-900 border-2 border-[#D4AF37] p-5 md:p-6 shadow-2xl shadow-red-950/40">
+          <div className="absolute top-0 right-0 w-64 h-64 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+          <div className="absolute -bottom-8 -left-8 w-48 h-48 bg-emerald-500/5 rounded-full blur-2xl pointer-events-none"></div>
+
+          <div className="relative flex flex-col md:flex-row md:items-center justify-between gap-4">
+            <div className="space-y-2">
+              <span className="inline-flex items-center space-x-1.5 bg-[#D4AF37]/15 border border-[#D4AF37]/35 px-3 py-1 rounded-full text-[#D4AF37] text-[10px] font-mono font-black uppercase tracking-wider leading-none">
+                <Sparkles className="w-3.5 h-3.5 animate-spin" style={{ animationDuration: "3s" }} />
+                <span>Oferta Especial do Chef</span>
+              </span>
+              <h4 className="font-serif font-black italic text-xl md:text-3xl text-white tracking-wide leading-tight">
+                COMPROU <span className="text-[#D4AF37]">2 PIZZAS</span>? <span className="text-green-400">GANHOU!</span>
+              </h4>
+              <p className="text-xs md:text-sm text-gray-200 leading-relaxed max-w-xl">
+                Na compra de <strong className="text-white">quaisquer de nossas pizzas</strong>, você ganha de brinde um <strong className="text-green-400">Guaraná Antarctica 2L</strong> geladinho e a sua <strong className="text-[#D4AF37]">Taxa de Entrega é GRÁTIS!</strong> 📦✨
+              </p>
+            </div>
+
+            <div className="bg-[#141418]/90 backdrop-blur border border-[#D4AF37]/30 p-4 rounded-2xl flex items-center space-x-4 shrink-0 shadow shadow-black">
+              <div className="flex -space-x-3 shrink-0">
+                <div className="w-10 h-10 rounded-full bg-[#8B0000] border-2 border-red-500 flex items-center justify-center font-serif font-black text-white text-[10px] leading-none shadow shadow-black">
+                  🍕 1
+                </div>
+                <div className="w-10 h-10 rounded-full bg-[#8B0000] border-2 border-red-500 flex items-center justify-center font-serif font-black text-white text-[10px] leading-none shadow shadow-black">
+                  🍕 2
+                </div>
+              </div>
+              <div className="text-gray-500 font-mono text-xs font-bold shrink-0">+</div>
+              <div className="flex flex-col text-left">
+                <span className="text-[9px] text-green-400 font-bold uppercase tracking-widest leading-none font-mono">Brinde da Casa</span>
+                <span className="text-xs font-black text-white mt-1">Guaraná Antarctica 2L</span>
+                <span className="text-[10px] text-gray-400 font-light mt-0.5">Taxa de Entrega: R$ 0,00</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* 6. Filter tabs for categories */}
       <div ref={menuSectionRef} />
@@ -711,10 +784,14 @@ export default function App() {
       {/* 8. Interactive Detail Selection Modal popup */}
       <ProductModal
         product={activeProductForModal}
-        onClose={() => setActiveProductForModal(null)}
+        onClose={() => {
+          setActiveProductForModal(null);
+          setSelectedPromoPrice(undefined);
+        }}
         onAddToCart={handleAddToCart}
         halfPizzaInProgress={halfPizzaInProgress}
         onSelectFirstHalf={(p) => setHalfPizzaInProgress(p)}
+        appliedPromoPrice={selectedPromoPrice}
       />
 
       {/* 9. Sliding Cart over Drawer bar */}

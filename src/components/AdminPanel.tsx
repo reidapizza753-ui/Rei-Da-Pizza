@@ -16,11 +16,31 @@ import {
   ChevronUp,
   ChevronDown,
   Info,
-  Upload
+  Upload,
+  Sparkles
 } from "lucide-react";
-import { Company, Configs, Category, Product } from "../types";
+import { Company, Configs, Category, Product, FeaturedPromo } from "../types";
 import { SUPABASE_SQL_SETUP, isSupabaseConfigured, uploadImage } from "../db/db";
 import OptimizedImage from "./OptimizedImage";
+
+// Helper function to robustly parse Brazilian currency inputs (e.g., "R$ 40,00", "40.00", "40,00", "40")
+export function parseBrazilianCurrency(valStr: string): number {
+  if (!valStr) return 0;
+  let cleaned = valStr.trim();
+  // Remove currency symbols, leading text, and keep only relevant numeric/dot/comma chars
+  cleaned = cleaned.replace(/[^\d.,-]/g, "");
+  
+  if (cleaned.includes(".") && cleaned.includes(",")) {
+    // If it has thousands separators (e.g., 1.250,50), remove the dot and parse comma
+    cleaned = cleaned.replace(/\./g, "").replace(",", ".");
+  } else if (cleaned.includes(",")) {
+    // If it has only comma (e.g., 40,00), convert to dot
+    cleaned = cleaned.replace(",", ".");
+  }
+  
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? 0 : parsed;
+}
 
 interface AdminPanelProps {
   onBackToStore: () => void;
@@ -35,6 +55,8 @@ interface AdminPanelProps {
   onSaveProduct: (p: Product) => Promise<void>;
   onDeleteProduct: (id: string) => Promise<void>;
   onReorderCategories: (ordered: Category[]) => Promise<void>;
+  featuredPromos: FeaturedPromo[];
+  onSaveFeaturedPromos: (promos: FeaturedPromo[]) => void;
 }
 
 export default function AdminPanel({
@@ -50,6 +72,8 @@ export default function AdminPanel({
   onSaveProduct,
   onDeleteProduct,
   onReorderCategories,
+  featuredPromos,
+  onSaveFeaturedPromos,
 }: AdminPanelProps) {
   // Authentication states
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -57,7 +81,7 @@ export default function AdminPanel({
   const [loginError, setLoginError] = useState("");
 
   // Tabs
-  const [activeTab, setActiveTab] = useState<"empresa" | "categorias" | "produtos" | "supabase">("empresa");
+  const [activeTab, setActiveTab] = useState<"empresa" | "categorias" | "produtos" | "destaques" | "supabase">("empresa");
 
   // General Notification feedback
   const [saveStatus, setSaveStatus] = useState<string | null>(null);
@@ -77,6 +101,28 @@ export default function AdminPanel({
   // General Inputs
   const [inputCompany, setInputCompany] = useState<Company>({ ...company });
   const [inputConfigs, setInputConfigs] = useState<Configs>({ ...configs });
+
+  // States for robust price handling & easy catalog search
+  const [productSearch, setProductSearch] = useState("");
+  const [priceInput, setPriceInput] = useState("");
+  const [deliveryFeeInput, setDeliveryFeeInput] = useState(String(configs.delivery_fee));
+
+  // Sync state when configs prop changes
+  React.useEffect(() => {
+    setInputCompany({ ...company });
+    setInputConfigs({ ...configs });
+    setDeliveryFeeInput(String(configs.delivery_fee));
+  }, [company, configs]);
+
+  // Local state for administering the 3 featured promo slots
+  const [localPromos, setLocalPromos] = useState<FeaturedPromo[]>([]);
+
+  // Sync state when featuredPromos prop changes
+  React.useEffect(() => {
+    if (featuredPromos) {
+      setLocalPromos(featuredPromos);
+    }
+  }, [featuredPromos]);
 
   // Handle Login
   const handleLoginSubmit = (e: React.FormEvent) => {
@@ -101,8 +147,13 @@ export default function AdminPanel({
   const handleSaveSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const finalFee = parseBrazilianCurrency(deliveryFeeInput);
+      
+      const updatedConfigs = { ...inputConfigs, delivery_fee: finalFee };
+      
       await onSaveCompany(inputCompany);
-      await onSaveConfigs(inputConfigs);
+      await onSaveConfigs(updatedConfigs);
+      setDeliveryFeeInput(finalFee === 0 ? "" : String(finalFee));
       triggerToast("Configurações gerais salvas com sucesso!");
     } catch (err: any) {
       console.error("Erro ao salvar configurações:", err);
@@ -185,6 +236,7 @@ export default function AdminPanel({
   const handleOpenProductForm = (prod?: Product) => {
     if (prod) {
       setEditingProduct({ ...prod });
+      setPriceInput(prod.price === 0 ? "" : String(prod.price));
     } else {
       setEditingProduct({
         id: `prod-${Date.now()}`,
@@ -199,6 +251,7 @@ export default function AdminPanel({
         borders_available: ["Sem borda", "Catupiry", "Cheddar", "Chocolate"],
         additionals_available: ["Bacon Extra", "Mussarela Extra", "Calabresa Extra", "Catupiry Extra", "Cheddar Extra", "Cebola Extra", "Azeitona Extra"],
       });
+      setPriceInput("35");
     }
     setIsProductModalOpen(true);
   };
@@ -215,13 +268,15 @@ export default function AdminPanel({
       return;
     }
 
+    const finalPrice = parseBrazilianCurrency(priceInput);
+
     const finalProduct: Product = {
       id: editingProduct.id || `prod-${Date.now()}`,
       name: editingProduct.name.trim(),
       photo: editingProduct.photo?.trim() || "https://images.unsplash.com/photo-1513104890138-7c749659a591?w=600&auto=format&fit=crop&q=80",
       description: editingProduct.description?.trim() || "",
       ingredients: editingProduct.ingredients?.trim() || "",
-      price: Number(editingProduct.price) || 0,
+      price: finalPrice,
       category_id: editingProduct.category_id,
       active: editingProduct.active !== undefined ? editingProduct.active : true,
       is_pizza: editingProduct.is_pizza !== undefined ? editingProduct.is_pizza : true,
@@ -424,6 +479,17 @@ export default function AdminPanel({
           <span>Produtos ({products.length})</span>
         </button>
         <button
+          onClick={() => setActiveTab("destaques")}
+          className={`pb-3 px-4 text-xs md:text-sm font-semibold border-b-2 transition-all flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
+            activeTab === "destaques"
+              ? "border-gold-500 text-gold-400 font-bold"
+              : "border-transparent text-gray-400 hover:text-white"
+          }`}
+        >
+          <Sparkles className="w-4 h-4 text-amber-500" />
+          <span>Promoções em Destaque</span>
+        </button>
+        <button
           onClick={() => setActiveTab("supabase")}
           className={`pb-3 px-4 text-xs md:text-sm font-semibold border-b-2 transition-all flex items-center space-x-2 cursor-pointer whitespace-nowrap ${
             activeTab === "supabase"
@@ -601,14 +667,13 @@ export default function AdminPanel({
               </div>
 
               <div>
-                <label className="text-xs text-gray-450 block ml-1 mb-1.5">Taxa de Entrega Padrão (R$)</label>
+                <label className="text-xs text-gray-450 block ml-1 mb-1.5 font-medium">Taxa de Entrega Padrão (R$)</label>
                 <input
-                  type="number"
-                  step="0.10"
-                  value={inputConfigs.delivery_fee}
-                  onChange={(e) => setInputConfigs({ ...inputConfigs, delivery_fee: Number(e.target.value) || 0 })}
-                  placeholder="Ex: 7.00"
-                  className="w-full p-3 bg-[#141418] border border-gray-800 rounded-xl text-sm font-mono focus:outline-none focus:border-gold-500"
+                  type="text"
+                  value={deliveryFeeInput}
+                  onChange={(e) => setDeliveryFeeInput(e.target.value)}
+                  placeholder="Ex: 7,00"
+                  className="w-full p-3 bg-[#141418] border border-gray-800 rounded-xl text-sm font-mono focus:outline-none focus:border-gold-500 text-white"
                 />
               </div>
 
@@ -790,15 +855,54 @@ export default function AdminPanel({
             </button>
           </div>
 
+          {/* Barra de Pesquisa Rápida */}
+          <div className="bg-[#111115] border border-gray-850 p-4.5 rounded-3xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+            <div className="flex-grow relative">
+              <input
+                id="product-search-bar"
+                type="text"
+                value={productSearch}
+                onChange={(e) => setProductSearch(e.target.value)}
+                placeholder="🔍 Digite para pesquisar sabor, descrição, bebida ou ingrediente..."
+                className="w-full p-3.5 pl-11 bg-[#141418] border border-gray-800 rounded-xl text-sm focus:outline-none focus:border-gold-500 text-white placeholder-gray-500 select-all"
+              />
+              {productSearch && (
+                <button
+                  onClick={() => setProductSearch("")}
+                  className="absolute right-3.5 top-1/2 -translate-y-1/2 p-1.5 bg-gray-800 text-xs text-gray-300 hover:text-white rounded-lg font-bold font-mono transition-all"
+                  title="Limpar pesquisa"
+                  type="button"
+                >
+                  Limpar
+                </button>
+              )}
+            </div>
+          </div>
+
           {/* Group products by Category */}
           {categories.map((category) => {
-            const catProds = products.filter((p) => p.category_id === category.id);
+            const catProds = products.filter((p) => {
+              const isMatchCategory = p.category_id === category.id;
+              if (!isMatchCategory) return false;
+              if (!productSearch.trim()) return true;
+              
+              const searchLower = productSearch.toLowerCase();
+              return (
+                p.name.toLowerCase().includes(searchLower) ||
+                (p.description && p.description.toLowerCase().includes(searchLower)) ||
+                (p.ingredients && p.ingredients.toLowerCase().includes(searchLower))
+              );
+            });
+
+            // Hide this category if searching and has no results
+            if (productSearch.trim() && catProds.length === 0) return null;
+
             return (
               <div key={category.id} className="bg-[#111115] border border-gray-850 p-5 rounded-3xl space-y-4">
                 <div className="flex items-center justify-between">
                   <h4 className="font-serif font-bold text-base text-gold-400">{category.name}</h4>
                   <span className="px-2 py-0.5 rounded-full bg-black text-[10px] font-mono text-gray-400 border border-gray-905">
-                    {catProds.length} cadastrados
+                    {catProds.length} {catProds.length === 1 ? "exibido" : "exibidos"}
                   </span>
                 </div>
 
@@ -1002,6 +1106,183 @@ export default function AdminPanel({
         </div>
       )}
 
+      {/* --- FEATURED OFFERS & PROMOTIONS TAB --- */}
+      {activeTab === "destaques" && (
+        <div className="space-y-6">
+          <div className="flex items-start space-x-3 pb-4 border-b border-gray-850">
+            <div className="p-3 bg-amber-950 border border-amber-900 text-amber-500 rounded-2xl shrink-0">
+              <Sparkles className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="font-serif font-black text-lg text-white uppercase tracking-wider">Promoções em Destaque (Topo do Cardápio)</h3>
+              <p className="text-xs text-gray-400 mt-1 max-w-2xl leading-relaxed">
+                Configure aqui até 3 pizzas da sua pizzaria para ficarem no topo do seu cardápio digital, com preços promocionais exclusivos para impulsionar suas vendas!
+              </p>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {[0, 1, 2].map((slotIndex) => {
+              const promo = localPromos[slotIndex] || { productId: "", label: "", promoPrice: 0 };
+              const selectedProduct = products.find((p) => p.id === promo.productId);
+              const availablePizzas = products.filter((p) => p.is_pizza && p.active);
+
+              return (
+                <div key={slotIndex} className="bg-[#111115] border border-gray-850 rounded-3xl p-5 flex flex-col justify-between space-y-4">
+                  <div className="space-y-3.5">
+                    <div className="flex items-center justify-between border-b border-gray-850 pb-2.5">
+                      <h4 className="text-xs md:text-sm font-serif font-black text-amber-500 tracking-wide uppercase">
+                        Slot Destaque #{slotIndex + 1}
+                      </h4>
+                      {promo.productId && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const copy = [...localPromos];
+                            copy[slotIndex] = { productId: "", label: "", promoPrice: 0 };
+                            setLocalPromos(copy);
+                          }}
+                          className="text-[10px] text-rose-500 hover:text-white bg-rose-950/25 border border-rose-950 hover:bg-rose-900/40 px-2 py-0.5 rounded-lg font-mono transition-colors cursor-pointer"
+                        >
+                          Limpar Slot
+                        </button>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="text-xs text-gray-400 block mb-1 font-medium">Escolher Pizza *</label>
+                      <select
+                        value={promo.productId}
+                        onChange={(e) => {
+                          const prodId = e.target.value;
+                          const originalProd = products.find(p => p.id === prodId);
+                          const copy = [...localPromos];
+                          
+                          copy[slotIndex] = {
+                            productId: prodId,
+                            label: originalProd ? originalProd.name : "",
+                            promoPrice: originalProd ? originalProd.price : 0
+                          };
+                          setLocalPromos(copy);
+                        }}
+                        className="w-full p-2.5 bg-[#141418] border border-gray-800 rounded-xl text-xs focus:outline-none focus:border-gold-500 text-gray-105"
+                      >
+                        <option value="">-- Nenhum Selecionado --</option>
+                        {availablePizzas.map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.name} (R$ {p.price.toFixed(2)})
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+
+                    {promo.productId && (
+                      <div className="space-y-3 pt-1">
+                        <div>
+                          <label className="text-xs text-gray-400 block mb-1 font-medium">Rótulo Curto / Selo</label>
+                          <input
+                            type="text"
+                            value={promo.label}
+                            onChange={(e) => {
+                              const copy = [...localPromos];
+                              copy[slotIndex] = { ...copy[slotIndex], label: e.target.value };
+                              setLocalPromos(copy);
+                            }}
+                            placeholder="Ex: Campeã"
+                            className="w-full p-2.5 bg-[#141418] border border-gray-800 rounded-xl text-xs focus:outline-none focus:border-gold-500 text-white"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="text-xs text-gray-400 block mb-1 font-medium">Preço na Promoção (R$)</label>
+                          <input
+                            type="text"
+                            value={promo.promoPrice === 0 ? "" : String(promo.promoPrice)}
+                            onChange={(e) => {
+                              const valueStr = e.target.value;
+                              const parsed = parseBrazilianCurrency(valueStr);
+                              const copy = [...localPromos];
+                              copy[slotIndex] = { ...copy[slotIndex], promoPrice: parsed };
+                              setLocalPromos(copy);
+                            }}
+                            placeholder="Ex: 29,90"
+                            className="w-full p-2.5 bg-[#141418] border border-gray-800 rounded-xl text-xs font-mono focus:outline-none focus:border-gold-500 text-white"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="pt-3 border-t border-gray-850">
+                    <span className="text-[10px] text-gray-500 uppercase tracking-widest font-mono block mb-2">Visualização da Oferta</span>
+                    {selectedProduct ? (
+                      <div className="relative rounded-2xl bg-[#141418] border border-[#D4AF37]/20 overflow-hidden group shadow-md transition-all">
+                        <div className="aspect-video w-full relative overflow-hidden bg-zinc-900 border-b border-gray-850">
+                          {selectedProduct.photo ? (
+                            <OptimizedImage
+                              src={selectedProduct.photo}
+                              alt={selectedProduct.name}
+                              className="w-full h-full object-cover grayscale-25"
+                            />
+                          ) : (
+                            <div className="w-full h-full flex items-center justify-center text-gray-600 bg-neutral-900 text-xs">
+                              Sem foto
+                            </div>
+                          )}
+                          {promo.label && (
+                            <span className="absolute top-2.5 left-2.5 bg-[#8B0000] text-[#D4AF37] font-mono text-[9px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border border-[#D4AF37]/30 shadow shadow-black">
+                              ★ {promo.label}
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="p-3.5 space-y-1">
+                          <h5 className="font-serif font-bold text-xs text-white tracking-wide truncate">{selectedProduct.name}</h5>
+                          <p className="text-[10px] text-zinc-400 font-light line-clamp-1 h-3.5 leading-none">{selectedProduct.description || "Deliciosa pizza artesanal."}</p>
+                          <div className="flex items-baseline space-x-2 pt-1">
+                            <span className="text-xs text-[#D4AF37] font-black font-mono">
+                              R$ {(promo.promoPrice || selectedProduct.price).toFixed(2)}
+                            </span>
+                            {promo.promoPrice > 0 && promo.promoPrice !== selectedProduct.price && (
+                              <span className="text-[10px] line-through text-gray-500 font-mono font-light">
+                                R$ {selectedProduct.price.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="h-28 rounded-2xl border border-dashed border-[#D4AF37]/15 bg-black/10 flex flex-col items-center justify-center text-gray-600 p-4 text-center">
+                        <Sparkles className="w-5 h-5 text-gray-700 stroke-1 mb-1 animate-pulse" />
+                        <span className="text-[10px] font-mono font-medium lowercase">Slot Vazio</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          <div className="flex items-center justify-end pt-4 border-t border-gray-850">
+            <button
+              onClick={() => {
+                const filtered = localPromos.map((p) => ({
+                  productId: p.productId || "",
+                  label: p.label || "",
+                  promoPrice: p.promoPrice || 0
+                }));
+                onSaveFeaturedPromos(filtered);
+                triggerToast("Promoções em Destaque salvas com sucesso!");
+              }}
+              className="flex items-center space-x-2 bg-[#8B0000] hover:brightness-110 active:scale-95 text-white font-bold py-3 px-6 rounded-2xl shadow-xl shadow-red-950/20 cursor-pointer border border-red-700/40 transition-all font-mono uppercase text-xs tracking-wider"
+            >
+              <Save className="w-4 h-4 text-[#D4AF37]" />
+              <span>Fixar Promoções em Destaque</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* --- INNER MODAL FORM FOR ADDING / EDITING PRODUCTS --- */}
       {isProductModalOpen && editingProduct && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/85 backdrop-blur-sm overflow-y-auto">
@@ -1059,13 +1340,13 @@ export default function AdminPanel({
                 </div>
 
                 <div>
-                  <label className="text-xs text-gray-450 block ml-1 mb-1.5">Preço Unitário (R$) *</label>
+                  <label className="text-xs text-gray-450 block ml-1 mb-1.5 font-medium">Preço Unitário (R$) *</label>
                   <input
-                    type="number"
-                    step="0.01"
+                    type="text"
                     required
-                    value={editingProduct.price ?? 35}
-                    onChange={(e) => setEditingProduct({ ...editingProduct, price: Number(e.target.value) || 0 })}
+                    value={priceInput}
+                    onChange={(e) => setPriceInput(e.target.value)}
+                    placeholder="Ex: 45,90"
                     className="w-full p-3 bg-[#141418] border border-gray-800 rounded-xl text-sm font-mono focus:outline-none focus:border-gold-500 text-white"
                   />
                 </div>

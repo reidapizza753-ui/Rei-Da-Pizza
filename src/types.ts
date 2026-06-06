@@ -57,6 +57,13 @@ export interface CartItem {
   is_half_and_half?: boolean;
   half_flavor_1?: Product;
   half_flavor_2?: Product;
+  appliedPrice?: number; // Custom promo price applied to this product instance if applicable
+}
+
+export interface FeaturedPromo {
+  productId: string;
+  promoPrice: number;
+  label: string;
 }
 
 export interface CustomerDetails {
