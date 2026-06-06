@@ -685,7 +685,7 @@ export default function App() {
                 COMPROU <span className="text-[#D4AF37]">2 PIZZAS</span>? <span className="text-green-400">GANHOU!</span>
               </h4>
               <p className="text-xs md:text-sm text-gray-200 leading-relaxed max-w-xl">
-                Na compra de <strong className="text-white">quaisquer de nossas pizzas</strong>, você ganha de brinde um <strong className="text-green-400">Guaraná Antarctica 2L</strong> geladinho e a sua <strong className="text-[#D4AF37]">Taxa de Entrega é GRÁTIS!</strong> 📦✨
+                Na compra de <strong className="text-white">quaisquer de nossas pizzas</strong>, você ganha de brinde um <strong className="text-green-400">Guaraná Antarctica 2L</strong> geladinho e a sua <strong className="text-[#D4AF37]">Taxa de Entrega é GRÁTIS!</strong> 🏍️💨
               </p>
             </div>
 

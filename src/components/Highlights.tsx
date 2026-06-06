@@ -1,5 +1,5 @@
 import React from "react";
-import { Flame, CookingPot, Leaf, Percent, Send } from "lucide-react";
+import { Flame, CookingPot, Leaf, Bike, Send } from "lucide-react";
 
 export default function Highlights() {
   const items = [
@@ -28,7 +28,7 @@ export default function Highlights() {
       borderColor: "border-emerald-500/20",
     },
     {
-      icon: Percent,
+      icon: Bike,
       title: "Entrega Rápida",
       desc: "Pizzas transportadas em embalagem térmica para chegar bem fumegantes.",
       color: "from-sky-500/10 to-blue-600/10",
