@@ -14,6 +14,8 @@ interface CartSlideOverProps {
   configs: Configs;
   halfPizzaInProgress: Product | null;
   onCancelHalfPizza?: () => void;
+  currentStep: 1 | 2 | 3 | 4;
+  setCurrentStep: (step: 1 | 2 | 3 | 4) => void;
 }
 
 export default function CartSlideOver({
@@ -26,6 +28,8 @@ export default function CartSlideOver({
   configs,
   halfPizzaInProgress,
   onCancelHalfPizza,
+  currentStep,
+  setCurrentStep,
 }: CartSlideOverProps) {
   if (!isOpen) return null;
 
@@ -43,8 +47,9 @@ export default function CartSlideOver({
     reference: "",
   });
 
-  // Wizard state (Steps 1, 2, 3)
-  const [currentStep, setCurrentStep] = useState<1 | 2 | 3>(1);
+  // Ref for auto-scroll and focus validation
+  const numberInputRef = React.useRef<HTMLInputElement>(null);
+
   const [cepLoading, setCepLoading] = useState(false);
   const [cepError, setCepError] = useState("");
   const [addressFound, setAddressFound] = useState(false);
@@ -123,6 +128,12 @@ export default function CartSlideOver({
             address: "",
             neighborhood: "",
           }));
+          
+          // Rolar automaticamente para o campo número no celular ao buscar o CEP
+          setTimeout(() => {
+            numberInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+            numberInputRef.current?.focus();
+          }, 450);
         }
       } catch (err) {
         setCepError("Erro ao buscar o CEP. Digite os dados manualmente ou tente de novo.");
@@ -161,45 +172,77 @@ export default function CartSlideOver({
     }).format(val);
   };
 
-  const handleValidateStep1 = () => {
+  const validateAddressStep = () => {
     if (halfPizzaInProgress) {
       alert(`Você tem uma pizza meio a meio incompleta (1ª Metade: ${halfPizzaInProgress.name}). Para finalizar o pedido, conclua a seleção da segunda metade no cardápio ou cancele a metade atual.`);
       return false;
     }
 
     const errors: Record<string, string> = {};
-    if (!customer.name.trim()) errors.name = "Nome é obrigatório";
-    if (!customer.phone.trim()) errors.phone = "Telefone celular é obrigatório";
     if (!customer.cep || customer.cep.replace(/\D/g, "").length !== 8) {
       errors.cep = "Digite um CEP válido completo (8 números)";
     }
-    if (!customer.address.trim()) errors.address = "Endereço é obrigatório";
-    if (!customer.number.trim()) errors.number = "Número é obrigatório";
-    if (!customer.neighborhood.trim()) errors.neighborhood = "Bairro é obrigatório";
+    if (!customer.address.trim()) {
+      errors.address = "Endereço é obrigatório";
+    }
+    if (!customer.number.trim()) {
+      errors.number = "Digite o número do endereço para continuar.";
+    }
+    if (!customer.neighborhood.trim()) {
+      errors.neighborhood = "Bairro é obrigatório";
+    }
+
+    if (Object.keys(errors).length > 0) {
+      setFormErrors(errors);
+      if (errors.number) {
+        setTimeout(() => {
+          numberInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+          numberInputRef.current?.focus();
+        }, 150);
+      }
+      return false;
+    }
+
+    setFormErrors({});
+    return true;
+  };
+
+  const validateCustomerStep = () => {
+    const errors: Record<string, string> = {};
+    if (!customer.name.trim()) errors.name = "Nome completo é obrigatório";
+    if (!customer.phone.trim()) {
+      errors.phone = "Telefone celular é obrigatório";
+    } else {
+      const cleaned = customer.phone.replace(/\D/g, "");
+      if (cleaned.length < 10) {
+        errors.phone = "Por favor, digite um telefone celular válido (DDD + número)";
+      }
+    }
 
     if (Object.keys(errors).length > 0) {
       setFormErrors(errors);
       return false;
     }
 
+    setFormErrors({});
     localStorage.setItem("pizzaria_customer_details", JSON.stringify(customer));
     return true;
   };
 
   const handleAdvanceToStep2 = () => {
-    if (handleValidateStep1()) {
-      if (!hasConfirmedEstimate) {
-        alert("Confirme o tempo de entrega clicando no botão para continuar.");
-        return;
-      }
-      setCurrentStep(2);
+    if (cartItems.length === 0) return;
+    setCurrentStep(2);
+  };
+
+  const handleAdvanceToStep3 = () => {
+    if (validateAddressStep()) {
+      setCurrentStep(3);
     }
   };
 
-  const handleConfirmEstimate = () => {
-    if (handleValidateStep1()) {
-      setHasConfirmedEstimate(true);
-      setCurrentStep(2);
+  const handleAdvanceToStep4 = () => {
+    if (validateCustomerStep()) {
+      setCurrentStep(4);
     }
   };
 
@@ -208,8 +251,12 @@ export default function CartSlideOver({
     e.preventDefault();
 
     // Verify critical items are still present
-    if (!handleValidateStep1()) {
-      setCurrentStep(1);
+    if (!validateAddressStep()) {
+      setCurrentStep(2);
+      return;
+    }
+    if (!validateCustomerStep()) {
+      setCurrentStep(3);
       return;
     }
 
@@ -217,7 +264,7 @@ export default function CartSlideOver({
     const itemsLines = cartItems.map((item) => {
       let line = "";
       if (item.is_half_and_half && item.half_flavor_1 && item.half_flavor_2) {
-        line = `• ${item.quantity}x Pizza Meio a Meio: (${item.half_flavor_1.name} + ${item.half_flavor_2.name})`;
+        line = `• ${item.quantity}x Pizza Meio a Meio - 8 Pedaços\n  1/2 ${item.half_flavor_1.name}\n  1/2 ${item.half_flavor_2.name}`;
       } else {
         line = `• ${item.quantity}x ${item.product.name}`;
       }
@@ -373,86 +420,184 @@ ${allObs || "Sem observações gerais."}`;
           ) : (
             <>
               {/* Etapa Wizard Indicator */}
-              <div className="bg-black/25 p-2 rounded-2xl border border-white/5 flex items-center justify-between text-center text-[11px] font-mono">
+              <div className="bg-black/25 p-1 rounded-xl border border-white/5 flex items-center justify-between text-center text-[10px] md:text-[11px] font-mono gap-1">
                 <button
-                  onClick={() => currentStep > 1 && setCurrentStep(1)}
-                  className={`flex-1 py-1 rounded-lg transition-all ${
+                  type="button"
+                  onClick={() => setCurrentStep(1)}
+                  className={`flex-1 py-1.5 rounded-lg transition-all text-center leading-none ${
                     currentStep === 1
-                      ? "bg-[#8B0000]/20 text-[#D4AF37] font-bold border border-[#D4AF37]/20"
-                      : "text-gray-500 hover:text-white"
+                      ? "bg-[#8B0505]/30 text-[#D4AF37] font-bold border border-[#D4AF37]/20"
+                      : "text-zinc-400 hover:text-white"
                   }`}
                 >
-                  1. Entrega
+                  1. Itens
                 </button>
-                <span className="text-gray-700 px-1">→</span>
+                <span className="text-zinc-700 font-light select-none">→</span>
                 <button
-                  onClick={() => currentStep > 2 && currentStep === 3 && setCurrentStep(2)}
+                  type="button"
+                  onClick={() => currentStep > 2 ? setCurrentStep(2) : undefined}
                   disabled={currentStep < 2}
-                  className={`flex-1 py-1 rounded-lg transition-all ${
+                  className={`flex-1 py-1.5 rounded-lg transition-all text-center leading-none ${
                     currentStep === 2
-                      ? "bg-[#8B0000]/20 text-[#D4AF37] font-bold border border-[#D4AF37]/20"
+                      ? "bg-[#8B0505]/30 text-[#D4AF37] font-bold border border-[#D4AF37]/20"
                       : currentStep > 2
-                      ? "text-gray-300 hover:text-white"
-                      : "text-gray-700"
+                      ? "text-zinc-350 hover:text-white"
+                      : "text-zinc-600 cursor-not-allowed"
                   }`}
                 >
-                  2. Resumo
+                  2. Entrega
                 </button>
-                <span className="text-gray-700 px-1">→</span>
-                <span
-                  className={`flex-1 py-1 rounded-lg transition-all ${
+                <span className="text-zinc-700 font-light select-none">→</span>
+                <button
+                  type="button"
+                  onClick={() => currentStep > 3 ? setCurrentStep(3) : undefined}
+                  disabled={currentStep < 3}
+                  className={`flex-1 py-1.5 rounded-lg transition-all text-center leading-none ${
                     currentStep === 3
-                      ? "bg-[#8B0000]/20 text-[#D4AF37] font-bold border border-[#D4AF37]/20"
-                      : "text-gray-700"
+                      ? "bg-[#8B0505]/30 text-[#D4AF37] font-bold border border-[#D4AF37]/20"
+                      : currentStep > 3
+                      ? "text-zinc-350 hover:text-white"
+                      : "text-zinc-550 cursor-not-allowed"
                   }`}
                 >
-                  3. Pagamento
-                </span>
+                  3. Dados
+                </button>
+                <span className="text-zinc-700 font-light select-none">→</span>
+                <button
+                  type="button"
+                  disabled={currentStep < 4}
+                  className={`flex-1 py-1.5 rounded-lg transition-all text-center leading-none ${
+                    currentStep === 4
+                      ? "bg-[#8B0505]/30 text-[#D4AF37] font-bold border border-[#D4AF37]/20"
+                      : "text-zinc-650 cursor-not-allowed"
+                  }`}
+                >
+                  4. Enviar
+                </button>
               </div>
 
-              {/* STEP 1: DADOS DE ENTREGA */}
+              {/* STEP 1: INTERACTIVE CART EDITING */}
               {currentStep === 1 && (
-                <div className="space-y-4">
+                <div className="space-y-4 animate-in fade-in duration-200">
                   <div className="border-b border-white/5 pb-2">
-                    <h4 className="text-xs font-mono font-bold text-gray-450 uppercase tracking-widest block text-[#D4AF37]">
-                      Etapa 1: Dados de entrega
+                    <h4 className="text-xs font-mono font-bold text-[#D4AF37] uppercase tracking-widest block">
+                      Etapa 1: Editar Carrinho
                     </h4>
                   </div>
 
-                  {/* Nome */}
-                  <div>
-                    <label className="text-xs text-gray-400 block ml-1 mb-1.5 font-medium font-mono">Nome Completo *</label>
-                    <input
-                      type="text"
-                      name="name"
-                      value={customer.name}
-                      onChange={handleInputChange}
-                      placeholder="Ex: Carlos Silva"
-                      className={`w-full p-3 bg-[#1A1A1A] border rounded-xl text-sm text-white placeholder-zinc-650 placeholder-zinc-600 focus:outline-none focus:border-[#D4AF37] ${
-                        formErrors.name ? "border-rose-950" : "border-white/5"
-                      }`}
-                    />
-                    {formErrors.name && <span className="text-[10px] text-red-500 mt-1 block ml-1">{formErrors.name}</span>}
-                  </div>
+                  <div className="space-y-3.5">
+                    {cartItems.map((item) => {
+                      const baseItemPrice = calculateItemBasePrice(item);
+                      const borderPrice = item.selected_border ? item.selected_border.price : 0;
+                      const additionalsPrice = (item.selected_additionals || []).reduce((sum, add) => sum + add.price, 0);
+                      const itemTotalCombined = (baseItemPrice + borderPrice + additionalsPrice) * item.quantity;
 
-                  {/* Telefone */}
-                  <div>
-                    <label className="text-xs text-gray-400 block ml-1 mb-1.5 font-medium font-mono">Telefone Celular (WhatsApp) *</label>
-                    <input
-                      type="tel"
-                      name="phone"
-                      value={customer.phone}
-                      onChange={handleInputChange}
-                      placeholder="Ex: (11) 99999-9999"
-                      className={`w-full p-3 bg-[#1A1A1A] border rounded-xl text-sm text-white placeholder-zinc-600 focus:outline-none focus:border-[#D4AF37] ${
-                        formErrors.phone ? "border-rose-950" : "border-white/5"
-                      }`}
-                    />
-                    {formErrors.phone && <span className="text-[10px] text-red-500 mt-1 block ml-1">{formErrors.phone}</span>}
+                      return (
+                        <div key={item.id} className="p-3.5 bg-zinc-900/40 rounded-2xl border border-white/5 flex items-start gap-3.5">
+                          <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0">
+                            <OptimizedImage
+                              src={item.product.photo}
+                              alt={item.product.name}
+                              categoryId={item.product.category_id}
+                              isPizza={item.product.is_pizza}
+                              className="w-full h-full object-cover"
+                            />
+                          </div>
+                          
+                          <div className="flex-grow min-w-0">
+                            {item.is_half_and_half && item.half_flavor_1 && item.half_flavor_2 ? (
+                              <>
+                                <h5 className="font-bold text-white text-xs leading-tight">Pizza Meio a Meio - 8 Peds</h5>
+                                <p className="text-[10px] text-zinc-400 mt-0.5 font-sans">1/2 {item.half_flavor_1.name}</p>
+                                <p className="text-[10px] text-zinc-400 font-sans">1/2 {item.half_flavor_2.name}</p>
+                              </>
+                            ) : (
+                              <h5 className="font-bold text-white text-xs leading-tight font-serif">{item.product.name}</h5>
+                            )}
+                            
+                            {/* Selected extras */}
+                            {item.selected_border && item.selected_border.price > 0 && (
+                              <p className="text-[9px] text-[#D4AF37] mt-1 font-medium">
+                                border: {item.selected_border.name} (+ R$ {item.selected_border.price.toFixed(2)})
+                              </p>
+                            )}
+
+                            {item.selected_additionals && item.selected_additionals.length > 0 && (
+                              <p className="text-[9px] text-zinc-400 mt-0.5 font-light">
+                                adicionais: {item.selected_additionals.map((a) => a.name).join(", ")}
+                              </p>
+                            )}
+
+                            {item.observation && item.observation.trim() && (
+                              <p className="text-[9px] text-zinc-500 italic mt-1 font-mono break-words leading-tight bg-black/20 p-1.5 rounded-lg border border-white/5">
+                                Obs: "{item.observation.trim()}"
+                              </p>
+                            )}
+
+                            {/* Quantity buttons and remove action */}
+                            <div className="flex items-center justify-between mt-3">
+                              <div className="flex items-center space-x-2.5 bg-black/35 rounded-lg p-1 border border-white/5">
+                                <button
+                                  type="button"
+                                  onClick={() => onUpdateQty(item.id, -1)}
+                                  className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/5 active:scale-95 transition-all cursor-pointer"
+                                  title="Diminuir"
+                                >
+                                  <Minus className="w-3.5 h-3.5" />
+                                </button>
+                                <span className="font-mono font-bold text-xs px-1 text-[#D4AF37]">
+                                  {item.quantity}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => onUpdateQty(item.id, 1)}
+                                  className="p-1 rounded text-zinc-400 hover:text-white hover:bg-white/5 active:scale-95 transition-all cursor-pointer"
+                                  title="Aumentar"
+                                >
+                                  <Plus className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+
+                              <div className="flex items-center space-x-2.5">
+                                <span className="font-mono text-xs font-bold text-[#D4AF37]">
+                                  {formatCurrency(itemTotalCombined)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => onRemoveItem(item.id)}
+                                  className="p-1.5 rounded-lg text-zinc-500 hover:text-red-500 hover:bg-red-950/20 active:scale-95 transition-all cursor-pointer"
+                                  title="Remover pizza"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 2: CEP E ENDEREÇO */}
+              {currentStep === 2 && (
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <div className="border-b border-white/5 pb-2 flex items-center justify-between">
+                    <h4 className="text-xs font-mono font-bold text-[#D4AF37] uppercase tracking-widest block">
+                      Etapa 2: Endereço de Entrega
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(1)}
+                      className="text-[10px] text-zinc-400 hover:text-white underline font-mono cursor-pointer"
+                    >
+                      Voltar ao Carrinho
+                    </button>
                   </div>
 
                   {/* CEP Input first */}
-                  <div className="p-4 bg-black/35 rounded-2xl border border-white/5 space-y-3.5">
+                  <div className="p-4 bg-black/35 rounded-2xl border border-white/5 space-y-4">
                     <div>
                       <label className="text-xs text-[#D4AF37] block ml-1 mb-1.5 font-bold font-mono">Preencha o CEP *</label>
                       <input
@@ -484,7 +629,7 @@ ${allObs || "Sem observações gerais."}`;
 
                     {/* Auto-filled details */}
                     {(addressFound || customer.address) && (
-                      <div className="space-y-3 animate-in fade-in duration-300">
+                      <div className="space-y-3.5 animate-in fade-in duration-300">
                         {/* Rua */}
                         <div>
                           <label className="text-xs text-gray-400 block ml-1 mb-1 font-medium font-mono">Rua / Logradouro *</label>
@@ -541,64 +686,82 @@ ${allObs || "Sem observações gerais."}`;
                           </div>
                         </div>
 
-                        {/* Manual values: Numero e Complemento */}
-                        <div className="grid grid-cols-2 gap-2">
-                          <div>
-                            <label className="text-xs text-[#D4AF37] block ml-1 mb-1 font-bold font-mono">Número *</label>
-                            <input
-                              type="text"
-                              name="number"
-                              value={customer.number}
-                              onChange={handleInputChange}
-                              placeholder="Ex: 50"
-                              className={`w-full p-2.5 bg-[#1B1B1F] border rounded-lg text-xs text-white placeholder-zinc-650 focus:outline-none focus:border-[#D4AF37] ${
-                                formErrors.number ? "border-rose-950" : "border-white/5"
-                              }`}
-                            />
-                            {formErrors.number && <span className="text-[10px] text-red-500 mt-1 block ml-1">{formErrors.number}</span>}
-                          </div>
-                          <div>
-                            <label className="text-xs text-gray-400 block ml-1 mb-1 font-medium font-mono">Complemento</label>
-                            <input
-                              type="text"
-                              name="complement"
-                              value={customer.complement}
-                              onChange={handleInputChange}
-                              placeholder="Ex: Apto 102"
-                              className="w-full p-2.5 bg-[#17171B] border border-white/5 rounded-lg text-xs text-white focus:outline-none focus:border-[#D4AF37]"
-                            />
-                          </div>
+                        {/* HIGH-CONTRAST BIG PROMINENT NUMBER FIELD AS REQUESTED IN REQ 4 */}
+                        <div className="p-4 bg-[#8B0000]/10 border-2 border-[#D4AF37]/50 rounded-2xl relative">
+                          <label className="text-xs text-[#D4AF37] block mb-1.5 font-black uppercase tracking-wider font-mono">
+                            Número da casa ou estabelecimento *
+                          </label>
+                          <input
+                            ref={numberInputRef}
+                            type="text"
+                            name="number"
+                            value={customer.number}
+                            onChange={handleInputChange}
+                            placeholder="Digite o número do endereço *"
+                            className={`w-full p-3 bg-[#1C1C22] border-2 rounded-xl text-base font-black text-white placeholder-zinc-500 focus:outline-none focus:border-[#D4AF37] ${
+                              formErrors.number ? "border-red-600 animate-pulse" : "border-white/10"
+                            }`}
+                          />
+                          {formErrors.number && (
+                            <span className="text-xs text-red-400 font-extrabold mt-2 block animate-bounce">
+                              ⚠️ {formErrors.number}
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Complemento */}
+                        <div>
+                          <label className="text-xs text-gray-400 block ml-1 mb-1 font-medium font-mono">Complemento, opcional</label>
+                          <input
+                            type="text"
+                            name="complement"
+                            value={customer.complement}
+                            onChange={handleInputChange}
+                            placeholder="Ex: Apto 102, Bloco C"
+                            className="w-full p-2.5 bg-[#17171B] border border-white/5 rounded-lg text-xs text-white focus:outline-none focus:border-[#D4AF37]"
+                          />
                         </div>
 
                         {/* Referencia Opcional */}
                         <div>
-                          <label className="text-xs text-gray-400 block ml-1 mb-1 font-medium font-mono">Ponto de Referência (Opcional)</label>
+                          <label className="text-xs text-gray-400 block ml-1 mb-1 font-medium font-mono">Ponto de referência, opcional</label>
                           <input
                             type="text"
                             name="reference"
                             value={customer.reference || ""}
                             onChange={handleInputChange}
-                            placeholder="Ex: Próximo à padaria, portão cinza"
+                            placeholder="Ex: Próximo à padaria, portão vermelho"
                             className="w-full p-2.5 bg-[#17171B] border border-white/5 rounded-lg text-xs text-white focus:outline-none focus:border-[#D4AF37]"
                           />
                         </div>
 
+                        {/* Inline Continuation Trigger Button */}
+                        <div className="pt-2 md:hidden">
+                          <button
+                            type="button"
+                            onClick={handleAdvanceToStep4} // will advance to the next step
+                            className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-[#D4AF37] to-[#8B0000] hover:brightness-110 active:scale-95 text-white font-extrabold text-xs py-4.5 rounded-xl border border-white/5 shadow-2xl transition-all cursor-pointer font-mono tracking-widest uppercase"
+                          >
+                            <span>Continuar</span>
+                            <span>→</span>
+                          </button>
+                        </div>
+
+                        {/* UI Indicators to scroll down on mobile */}
+                        <div className="text-center py-1.5 animate-pulse md:hidden">
+                          <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">
+                            ↓↓ Continue preenchendo abaixo ↓↓
+                          </span>
+                        </div>
+
                         {/* ESTIMATIVE PANEL */}
-                        <div className="p-4 bg-[#8B0000]/10 border border-[#D4AF37]/35 rounded-2xl space-y-3 mt-4 text-center">
+                        <div className="p-4 bg-[#8B0000]/10 border border-[#D4AF37]/35 rounded-2xl space-y-2 text-center">
                           <p className="text-xs text-white font-medium">
                             Tempo estimado de entrega para este endereço:
                           </p>
                           <p className="text-lg font-serif font-black text-[#D4AF37] uppercase tracking-wide">
                             Até 30 minutos.
                           </p>
-                          
-                          <button
-                            type="button"
-                            onClick={handleConfirmEstimate}
-                            className="w-full py-2.5 bg-[#8B0000] hover:brightness-110 active:scale-95 text-white font-bold text-xs rounded-full border border-[#D4AF37]/20 cursor-pointer transition-all uppercase tracking-wider font-mono"
-                          >
-                            Ok, continuar pedido
-                          </button>
                         </div>
                       </div>
                     )}
@@ -606,25 +769,76 @@ ${allObs || "Sem observações gerais."}`;
                 </div>
               )}
 
-              {/* STEP 2: RESUMO DO PEDIDO */}
-              {currentStep === 2 && (
-                <div className="space-y-4">
+              {/* STEP 3: DADOS DO CLIENTE */}
+              {currentStep === 3 && (
+                <div className="space-y-4 animate-in fade-in duration-200">
                   <div className="border-b border-white/5 pb-2 flex items-center justify-between">
                     <h4 className="text-xs font-mono font-bold text-[#D4AF37] uppercase tracking-widest block">
-                      Etapa 2: Resumo do pedido
+                      Etapa 3: Seus Dados Pessoais
                     </h4>
                     <button
-                      onClick={() => setCurrentStep(1)}
-                      className="text-[10px] text-gray-400 hover:text-white underline font-mono cursor-pointer"
+                      type="button"
+                      onClick={() => setCurrentStep(2)}
+                      className="text-[10px] text-zinc-400 hover:text-white underline font-mono cursor-pointer"
                     >
                       Alterar endereço
                     </button>
                   </div>
 
-                  {/* Customer Review Summary Card */}
+                  {/* Nome */}
+                  <div>
+                    <label className="text-xs text-gray-400 block ml-1 mb-1.5 font-medium font-mono">Nome Completo *</label>
+                    <input
+                      type="text"
+                      name="name"
+                      value={customer.name}
+                      onChange={handleInputChange}
+                      placeholder="Ex: Carlos Silva"
+                      className={`w-full p-3 bg-[#1A1A1A] border rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-[#D4AF37] ${
+                        formErrors.name ? "border-rose-950" : "border-white/5"
+                      }`}
+                    />
+                    {formErrors.name && <span className="text-[10px] text-red-500 mt-1 block ml-1">{formErrors.name}</span>}
+                  </div>
+
+                  {/* Telefone */}
+                  <div>
+                    <label className="text-xs text-gray-400 block ml-1 mb-1.5 font-medium font-mono">Telefone Celular (WhatsApp) *</label>
+                    <input
+                      type="tel"
+                      name="phone"
+                      value={customer.phone}
+                      onChange={handleInputChange}
+                      placeholder="Ex: (11) 99999-9999"
+                      className={`w-full p-3 bg-[#1A1A1A] border rounded-xl text-sm text-white placeholder-zinc-500 focus:outline-none focus:border-[#D4AF37] ${
+                        formErrors.phone ? "border-rose-950" : "border-white/5"
+                      }`}
+                    />
+                    {formErrors.phone && <span className="text-[10px] text-red-500 mt-1 block ml-1">{formErrors.phone}</span>}
+                  </div>
+                </div>
+              )}
+
+              {/* STEP 4: RESUMO E PAGAMENTO */}
+              {currentStep === 4 && (
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <div className="border-b border-white/5 pb-2 flex items-center justify-between">
+                    <h4 className="text-xs font-mono font-bold text-[#D4AF37] uppercase tracking-widest block">
+                      Etapa 4: Resumo, pagamento e envio
+                    </h4>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentStep(3)}
+                      className="text-[10px] text-zinc-400 hover:text-white underline font-mono cursor-pointer"
+                    >
+                      Alterar meus dados
+                    </button>
+                  </div>
+
+                  {/* Ficha Review Summary Card */}
                   <div className="p-4 bg-[#161619] rounded-2xl border border-white/5 space-y-2.5 text-xs">
                     <p className="font-bold border-b border-white/5 pb-1.5 uppercase font-mono text-[10px] tracking-widest text-[#D4AF37]">
-                      Ficha de Entrega
+                      Ficha do Pedido
                     </p>
                     <div className="grid grid-cols-2 gap-y-1.5 text-[11px] text-gray-300">
                       <div>
@@ -664,10 +878,10 @@ ${allObs || "Sem observações gerais."}`;
                   {/* Selected items review lists */}
                   <div className="space-y-2.5">
                     <p className="text-xs font-bold text-gray-400 px-1 font-mono uppercase tracking-wider">
-                      Itens do Pedido ({cartItems.reduce((acc, i) => acc + i.quantity, 0)})
+                      Itens selecionados ({cartItems.reduce((acc, i) => acc + i.quantity, 0)})
                     </p>
 
-                    <div className="space-y-2.5 max-h-[220px] overflow-y-auto pr-1">
+                    <div className="space-y-2.5 max-h-[160px] overflow-y-auto pr-1">
                       {cartItems.map((item) => {
                         const baseItemPrice = calculateItemBasePrice(item);
                         const itemBasePlusExtras = baseItemPrice +
@@ -690,8 +904,9 @@ ${allObs || "Sem observações gerais."}`;
                             <div className="flex-grow text-xs text-gray-200">
                               {item.is_half_and_half && item.half_flavor_1 && item.half_flavor_2 ? (
                                 <>
-                                  <h5 className="font-bold text-white text-xs">Pizza Meio a Meio x{item.quantity}</h5>
-                                  <p className="text-[10px] text-gray-400">1/2 {item.half_flavor_1.name} + 1/2 {item.half_flavor_2.name}</p>
+                                  <h5 className="font-bold text-white text-xs">Pizza Meio a Meio - 8 Pedaços x{item.quantity}</h5>
+                                  <p className="text-[10px] text-gray-400">1/2 {item.half_flavor_1.name}</p>
+                                  <p className="text-[10px] text-gray-400">1/2 {item.half_flavor_2.name}</p>
                                 </>
                               ) : (
                                 <h5 className="font-bold text-white text-xs">{item.product.name} x{item.quantity}</h5>
@@ -725,51 +940,22 @@ ${allObs || "Sem observações gerais."}`;
                     </div>
                   </div>
 
-                  {/* Continuation Button */}
-                  <div className="pt-2">
-                    <button
-                      type="button"
-                      onClick={() => setCurrentStep(3)}
-                      className="w-full flex items-center justify-center space-x-2 bg-gradient-to-r from-[#D4AF37] to-[#8B0000] hover:brightness-110 active:scale-95 text-white font-bold py-3 px-6 rounded-full border border-orange-900/30 transition-all cursor-pointer text-sm font-sans"
-                    >
-                      <span>Ir para Pagamento</span>
-                      <span>→</span>
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* STEP 3: PAGAMENTO E ENVIO */}
-              {currentStep === 3 && (
-                <div className="space-y-5">
-                  <div className="border-b border-white/5 pb-2 flex items-center justify-between">
-                    <h4 className="text-xs font-mono font-bold text-[#D4AF37] uppercase tracking-widest block">
-                      Etapa 3: Pagamento e envio
-                    </h4>
-                    <button
-                      onClick={() => setCurrentStep(2)}
-                      className="text-[10px] text-gray-400 hover:text-white underline font-mono cursor-pointer"
-                    >
-                      Voltar ao resumo
-                    </button>
-                  </div>
-
-                  {/* Payment instruction card: PIX-ONLY as requested in requirement 4 */}
-                  <div className="p-4 bg-[#8B0000]/5 border border-[#D4AF37]/20 rounded-2xl space-y-4 text-center">
+                  {/* Payment instruction card: PIX-ONLY as requested */}
+                  <div className="p-4 bg-[#8B0000]/5 border border-[#D4AF37]/20 rounded-2xl space-y-3.5 text-center">
                     <span className="text-xs text-gray-400 uppercase font-mono tracking-widest block">
                       Forma de Pagamento
                     </span>
                     
-                    <div className="inline-flex items-center space-x-2.5 bg-[#D4AF37]/10 px-4 py-2 border border-[#D4AF37]/35 rounded-full text-[#D4AF37] font-bold font-serif text-lg tracking-wide uppercase">
-                      <span className="w-2.5 h-2.5 bg-green-500 rounded-full animate-ping" />
+                    <div className="inline-flex items-center space-x-2.5 bg-[#D4AF37]/10 px-4 py-2 border border-[#D4AF37]/35 rounded-full text-[#D4AF37] font-bold font-serif text-base tracking-wide uppercase">
+                      <span className="w-2 h-2 bg-green-500 rounded-full animate-ping" />
                       <span>🔑 PIX</span>
                     </div>
 
-                    <div className="space-y-2 max-w-xs mx-auto text-xs text-gray-300 leading-relaxed font-light">
+                    <div className="space-y-2 max-w-xs mx-auto text-[11px] text-gray-300 leading-relaxed font-light">
                       <p>
                         A forma de pagamento aceita para este pedido é exclusivamente <strong>PIX</strong>.
                       </p>
-                      <p className="text-[11px] text-gray-400">
+                      <p className="text-[10px] text-gray-400">
                         O envio do pedido será feito no WhatsApp para nosso atendente, e você receberá as informações da chave PIX logo em seguida para concluir seu pagamento.
                       </p>
                     </div>
@@ -778,7 +964,7 @@ ${allObs || "Sem observações gerais."}`;
                   <div className="p-4 bg-black/45 rounded-2xl border border-white/5 text-[11px] text-gray-500 flex items-start gap-2.5 leading-relaxed font-mono">
                     <ShieldAlert className="w-4 h-4 text-[#D4AF37] shrink-0 mt-0.5" />
                     <div>
-                      <span>Ao enviar, nosso sistema integrará seus dados de entrega, itens selecionados e enviará todos os dados com precisão para seu WhatsApp. Ao abrir o aplicativo, clique no botão enviar mensagem sem alterar a formatação para processamento rápido de sua comanda.</span>
+                      <span>Ao enviar, nosso sistema integrará seus dados de entrega, itens e enviará tudo formatado para seu WhatsApp para processamento rápido de sua comanda.</span>
                     </div>
                   </div>
                 </div>
@@ -803,7 +989,7 @@ ${allObs || "Sem observações gerais."}`;
                 <span className="font-serif">Valor Total</span>
                 <span className="font-mono text-[#D4AF37] text-base font-black">{formatCurrency(total)}</span>
               </div>
-              <div className="flex items-center justify-between text-[11px] text-gray-505 border-t border-white/5 pt-1.5">
+              <div className="flex items-center justify-between text-[11px] text-gray-550 border-t border-white/5 pt-1.5">
                 <span className="text-gray-500 font-mono font-medium uppercase tracking-wider">Forma de Pagamento:</span>
                 <span className="font-bold text-[#D4AF37] bg-[#8B0000]/10 px-2 py-0.5 rounded border border-red-950">PIX</span>
               </div>
@@ -821,7 +1007,7 @@ ${allObs || "Sem observações gerais."}`;
                     onClick={handleAdvanceToStep2}
                     className="w-full flex items-center justify-center space-x-2 bg-[#8B0000] hover:brightness-110 active:scale-98 text-white font-bold py-3.5 rounded-full border border-red-700/40 shadow-lg cursor-pointer transition-all"
                   >
-                    <span className="font-bold font-mono tracking-wider uppercase text-xs">Continuar para Resumo</span>
+                    <span className="font-bold font-mono tracking-wider uppercase text-xs">Continuar para Entrega</span>
                     <span>→</span>
                   </button>
                 )}
@@ -835,16 +1021,34 @@ ${allObs || "Sem observações gerais."}`;
                       Voltar
                     </button>
                     <button
-                      onClick={() => setCurrentStep(3)}
+                      onClick={handleAdvanceToStep3}
                       className="flex-grow flex items-center justify-center space-x-2 bg-gradient-to-r from-[#D4AF37] to-[#8B0000] hover:brightness-110 active:scale-98 text-white font-bold py-3.5 rounded-full border border-red-700/40 shadow-lg cursor-pointer transition-all"
                     >
-                      <span className="font-bold font-mono tracking-wider uppercase text-xs">Seguir para Pagamento</span>
+                      <span className="font-bold font-mono tracking-wider uppercase text-xs">Seguir para Dados</span>
                       <span>→</span>
                     </button>
                   </div>
                 )}
 
                 {currentStep === 3 && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => setCurrentStep(2)}
+                      className="px-3.5 bg-transparent border border-white/5 hover:bg-white/5 text-xs text-[#D4AF37] rounded-full font-mono cursor-pointer"
+                    >
+                      Voltar
+                    </button>
+                    <button
+                      onClick={handleAdvanceToStep4}
+                      className="flex-grow flex items-center justify-center space-x-2 bg-gradient-to-r from-[#D4AF37] to-[#8B0000] hover:brightness-110 active:scale-98 text-white font-bold py-3.5 rounded-full border border-red-700/40 shadow-lg cursor-pointer transition-all"
+                    >
+                      <span className="font-bold font-mono tracking-wider uppercase text-xs">Ir para Pagamento</span>
+                      <span>→</span>
+                    </button>
+                  </div>
+                )}
+
+                {currentStep === 4 && (
                   <div className="space-y-2">
                     <button
                       onClick={handleFinalOrderSubmit}
@@ -855,10 +1059,10 @@ ${allObs || "Sem observações gerais."}`;
                     </button>
                     
                     <button
-                      onClick={() => setCurrentStep(2)}
+                      onClick={() => setCurrentStep(3)}
                       className="w-full text-center text-xs text-gray-500 hover:text-gray-300 py-1 underline font-mono cursor-pointer"
                     >
-                      Revisar Resumo do Pedido
+                      Revisar Dados do Cliente
                     </button>
                   </div>
                 )}

@@ -115,11 +115,11 @@ export default function ProductModal({
       onAddToCart({
         product: {
           ...product,
-          name: "Pizza Meio a Meio - 8 pedaços",
+          name: "Pizza Meio a Meio - 8 Pedaços",
           price: Math.max(halfPizzaInProgress.price, product.price),
           description: `1/2 ${halfPizzaInProgress.name} | 1/2 ${product.name}`,
         },
-        quantity,
+        quantity: 1, // Pizza meio a meio sempre deve ser adicionada como 1 unidade
         selected_border: selectedBorder,
         selected_additionals: [], // No additionals for half-and-half as per spec
         observation: observation.trim(),
@@ -465,7 +465,7 @@ export default function ProductModal({
             )}
 
           {/* Quantity picker control (for whole pizza or completed half-and-half) */}
-          {modalMode !== "choose_proportion" && modalMode !== "meio_first_confirm" && (
+          {modalMode !== "choose_proportion" && modalMode !== "meio_first_confirm" && modalMode !== "meio_second_confirm" && (
             <div className="flex items-center space-x-4 bg-black/60 px-4 py-2 rounded-full border border-white/5">
               <button
                 onClick={() => quantity > 1 && setQuantity(quantity - 1)}

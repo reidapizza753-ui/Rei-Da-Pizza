@@ -45,9 +45,22 @@ export default function App() {
   const [cartItems, setCartItems] = useState<CartItem[]>([]);
   const [isCartOpen, setIsCartOpen] = useState(false);
   const [halfPizzaInProgress, setHalfPizzaInProgress] = useState<Product | null>(null);
+  const [currentStep, setCurrentStep] = useState<1 | 2 | 3 | 4>(1);
+  const [toastText, setToastText] = useState<string | null>(null);
 
   // References
   const menuSectionRef = useRef<HTMLDivElement>(null);
+  const isPopStateRef = useRef(false);
+
+  // Auto-dismiss toast notification
+  useEffect(() => {
+    if (toastText) {
+      const timer = setTimeout(() => {
+        setToastText(null);
+      }, 4000);
+      return () => clearTimeout(timer);
+    }
+  }, [toastText]);
 
   // Handle SPA navigation paths & hashes
   useEffect(() => {
@@ -74,6 +87,75 @@ export default function App() {
       window.removeEventListener("hashchange", handleUrlCheck);
     };
   }, []);
+
+  // History API popstate & pushState synchronization for catalog, cart and checkout screen transitions
+  useEffect(() => {
+    if (isAdminView || isRedirectingView) return;
+
+    // Set initial state
+    if (!window.history.state || typeof window.history.state !== "object" || !("isCartOpen" in window.history.state)) {
+      window.history.replaceState(
+        {
+          isCartOpen: false,
+          currentStep: 1,
+          hasProductModal: false,
+        },
+        ""
+      );
+    }
+
+    const handleCustomPopState = (event: PopStateEvent) => {
+      if (isAdminView || isRedirectingView) return;
+
+      const state = event.state;
+      if (state && typeof state === "object" && "isCartOpen" in state) {
+        isPopStateRef.current = true;
+        setIsCartOpen(state.isCartOpen);
+        setCurrentStep(state.currentStep || 1);
+        if (!state.hasProductModal) {
+          setActiveProductForModal(null);
+        }
+      } else {
+        isPopStateRef.current = true;
+        setIsCartOpen(false);
+        setCurrentStep(1);
+        setActiveProductForModal(null);
+      }
+    };
+
+    window.addEventListener("popstate", handleCustomPopState);
+    return () => {
+      window.removeEventListener("popstate", handleCustomPopState);
+    };
+  }, [isAdminView, isRedirectingView]);
+
+  useEffect(() => {
+    if (isAdminView || isRedirectingView) return;
+
+    if (isPopStateRef.current) {
+      isPopStateRef.current = false;
+      return;
+    }
+
+    const hasProductModal = activeProductForModal !== null;
+    const currentState = window.history.state;
+
+    const wantsState = {
+      isCartOpen,
+      currentStep,
+      hasProductModal,
+    };
+
+    const isDifferent =
+      !currentState ||
+      currentState.isCartOpen !== wantsState.isCartOpen ||
+      currentState.currentStep !== wantsState.currentStep ||
+      currentState.hasProductModal !== wantsState.hasProductModal;
+
+    if (isDifferent) {
+      window.history.pushState(wantsState, "");
+    }
+  }, [isCartOpen, currentStep, activeProductForModal, isAdminView, isRedirectingView]);
 
   // Fetch initial data from storage layers
   const loadDatabase = async () => {
@@ -277,8 +359,9 @@ export default function App() {
       setHalfPizzaInProgress(null);
     }
 
-    // Slide-open the cart immediately for high conversion feeling!
-    setIsCartOpen(true);
+    // Gentle notification bar at bottom of menu screen
+    const pName = newItem.product.name;
+    setToastText(`Você adicionou ${pName} ao carrinho.`);
   };
 
   const handleUpdateProductQuantity = (id: string, delta: number) => {
@@ -425,6 +508,25 @@ export default function App() {
   const activeProductsFiltered = products.filter(
     (p) => p.active && p.category_id === selectedCategoryId
   );
+
+  const calculateCartTotal = () => {
+    return cartItems.reduce((acc, item) => {
+      let basePrice = item.product.price;
+      if (item.is_half_and_half && item.half_flavor_1 && item.half_flavor_2) {
+        basePrice = Math.max(item.half_flavor_1.price, item.half_flavor_2.price);
+      }
+      const borderPrice = item.selected_border ? item.selected_border.price : 0;
+      const additionalsPrice = (item.selected_additionals || []).reduce((sum, ad) => sum + ad.price, 0);
+      return acc + (basePrice + borderPrice + additionalsPrice) * item.quantity;
+    }, 0);
+  };
+
+  const formatValue = (val: number) => {
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+    }).format(val);
+  };
 
   const totalCartItemsCount = cartItems.reduce((acc, i) => acc + i.quantity, 0);
 
@@ -626,23 +728,37 @@ export default function App() {
         configs={configs}
         halfPizzaInProgress={halfPizzaInProgress}
         onCancelHalfPizza={() => setHalfPizzaInProgress(null)}
+        currentStep={currentStep}
+        setCurrentStep={setCurrentStep}
       />
 
-      {/* 10. Sticky Mobile Cart Button */}
+      {/* 10. Sticky Mobile Cart Bottom Bar */}
       {totalCartItemsCount > 0 && (
-        <div className="fixed bottom-6 right-6 md:hidden z-40">
+        <div className="fixed bottom-0 left-0 right-0 p-4 bg-black/90 backdrop-blur-md border-t border-[#D4AF37]/25 z-40 md:hidden flex justify-between items-center gap-3 shadow-2xl">
           <button
             onClick={() => setIsCartOpen(true)}
-            className="flex items-center space-x-2 bg-gradient-to-r from-[#D4AF37] to-[#8B0000] hover:brightness-110 active:scale-95 text-white font-extrabold text-sm py-3.5 px-5 rounded-full shadow-2xl shadow-red-950/85 border border-[#fcdeb7]/30 transition-all cursor-pointer animate-bounce"
-            style={{ animationDuration: '3s' }}
-            title="Ver Carrinho"
+            className="w-full flex items-center justify-between bg-gradient-to-r from-[#D4AF37] to-[#8B0000] hover:brightness-110 active:scale-95 text-white font-extrabold text-xs py-3.5 px-5.5 rounded-xl border border-white/10 transition-all cursor-pointer shadow-lg uppercase tracking-wider font-mono animate-in fade-in slide-in-from-bottom"
+            title="Meu Pedido"
           >
-            <ShoppingBag className="w-4 h-4 text-white" />
-            <span className="whitespace-nowrap font-medium text-xs">Ver Sacola</span>
-            <span className="bg-white text-[#8B0000] rounded-full w-5 h-5 flex items-center justify-center font-mono font-bold text-xs">
-              {totalCartItemsCount}
-            </span>
+            <div className="flex items-center space-x-2">
+              <ShoppingBag className="w-4 h-4 text-white" />
+              <span>Meu Pedido</span>
+              <span className="bg-white text-[#8B0000] rounded-full w-5 h-5 flex items-center justify-center font-mono font-bold text-[10px] scale-90">
+                {totalCartItemsCount}
+              </span>
+            </div>
+            <span className="font-extrabold font-mono text-xs">{formatValue(calculateCartTotal())}</span>
           </button>
+        </div>
+      )}
+
+      {/* 11. Custom Elegant dismissal Toast message overlay */}
+      {toastText && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-bottom-3 duration-300">
+          <div className="flex items-center space-x-3 bg-neutral-900/95 border border-[#D4AF37]/40 px-5 py-3 rounded-full shadow-2xl text-white font-sans text-xs font-semibold whitespace-nowrap tracking-wide leading-none">
+            <span className="w-2.5 h-2.5 rounded-full bg-green-500 animate-pulse shrink-0" />
+            <span>{toastText}</span>
+          </div>
         </div>
       )}
 

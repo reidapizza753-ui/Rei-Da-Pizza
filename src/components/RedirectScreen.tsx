@@ -50,6 +50,20 @@ export default function RedirectScreen() {
     };
   }, []);
 
+  // Intercept phone custom/browser back button gesture during WhatsApp redirection loading
+  useEffect(() => {
+    window.history.pushState({ isRedirectState: true }, "", window.location.pathname + window.location.hash);
+
+    const handlePreventBack = () => {
+      window.history.pushState({ isRedirectState: true }, "", window.location.pathname + window.location.hash);
+    };
+
+    window.addEventListener("popstate", handlePreventBack);
+    return () => {
+      window.removeEventListener("popstate", handlePreventBack);
+    };
+  }, []);
+
   const handleManualOpen = () => {
     if (!phone || !text) return;
     const encodedText = encodeURIComponent(text);
